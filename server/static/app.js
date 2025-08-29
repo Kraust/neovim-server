@@ -173,12 +173,91 @@ class NeovimRenderer {
 			case "hl_attr_define":
 				this.handleHlAttrDefine(eventData);
 				break;
+			case "win_viewport":
+				this.handleWinViewport(eventData);
+				break;
+			case "grid_scroll":
+				this.handleGridScroll(eventData);
+				break;
 			case "hl_group_set":
 				break;
 			case "chdir":
 				break;
 			default:
 				console.log("Unhandled event type:", eventType, eventData);
+		}
+	}
+
+	handleGridScroll(eventData) {
+		for (const scrollData of eventData) {
+			if (!Array.isArray(scrollData) || scrollData.length < 7) continue;
+
+			const [grid, top, bot, left, right, rows, cols] = scrollData;
+
+			if (grid !== 1) continue; // Only handle main grid
+
+			// Scroll the specified region
+			if (rows > 0) {
+				// Scroll down - move content up
+				for (let row = top; row < bot - rows; row++) {
+					for (let col = left; col < right; col++) {
+						if (row + rows < this.rows && col < this.cols) {
+							this.grid[row][col] = this.grid[row + rows][col];
+						}
+					}
+				}
+				// Clear the bottom rows
+				for (let row = bot - rows; row < bot; row++) {
+					for (let col = left; col < right; col++) {
+						if (row < this.rows && col < this.cols) {
+							this.grid[row][col] = {
+								char: " ",
+								fg: this.colors.fg,
+								bg: this.colors.bg,
+							};
+						}
+					}
+				}
+			} else if (rows < 0) {
+				// Scroll up - move content down
+				const absRows = Math.abs(rows);
+				for (let row = bot - 1; row >= top + absRows; row--) {
+					for (let col = left; col < right; col++) {
+						if (row - absRows >= 0 && col < this.cols) {
+							this.grid[row][col] = this.grid[row - absRows][col];
+						}
+					}
+				}
+				// Clear the top rows
+				for (let row = top; row < top + absRows; row++) {
+					for (let col = left; col < right; col++) {
+						if (row < this.rows && col < this.cols) {
+							this.grid[row][col] = {
+								char: " ",
+								fg: this.colors.fg,
+								bg: this.colors.bg,
+							};
+						}
+					}
+				}
+			}
+		}
+		// Don't redraw immediately - wait for flush event
+	}
+
+	handleWinViewport(eventData) {
+		for (const viewportData of eventData) {
+			if (!Array.isArray(viewportData) || viewportData.length < 6) continue;
+
+			const [grid, win, topline, botline, curline, curcol] = viewportData;
+
+			// Store viewport info if needed for scrolling/rendering optimizations
+			if (grid === 1) {
+				// Main grid viewport update
+				console.log(
+					`Viewport: lines ${topline}-${botline}, cursor at ${curline},${curcol}`,
+				);
+			}
 		}
 	}
 
