@@ -10,6 +10,8 @@ class NeovimRenderer {
 		this.cols = 80;
 		this.grid = [];
 		this.cursor = { row: 0, col: 0 };
+		this.cursorMode = "normal"; // Add cursor mode tracking
+		this.cursorVisible = true;
 		this.colors = {
 			fg: "#ffffff",
 			bg: "#000000",
@@ -19,6 +21,7 @@ class NeovimRenderer {
 		this.initGrid();
 		this.setupCanvas();
 		this.updateFont();
+		this.startCursorBlink();
 	}
 
 	updateFont() {
@@ -49,9 +52,6 @@ class NeovimRenderer {
 			fontString.match(/^([^:]+)(?::h(\d+))?$/) ||
 			fontString.match(/^([^\d]+)\s+(\d+)$/);
 
-		console.log(`fontString: ${fontString}`);
-		console.log(`fontMatch: ${fontMatch}`);
-
 		if (fontMatch) {
 			let fontFamily = fontMatch[1].trim();
 			const newFontSize = parseInt(fontMatch[2]) || 12;
@@ -62,8 +62,6 @@ class NeovimRenderer {
 
 			this.fontFamily = `${fontFamily},monospace`;
 		}
-
-		console.log(`fontFamily: ${this.fontFamily}`);
 
 		this.updateFont();
 
@@ -165,11 +163,95 @@ class NeovimRenderer {
 	}
 
 	drawCursor() {
+		if (!this.cursorVisible) return;
+
 		const x = this.cursor.col * this.cellWidth;
 		const y = this.cursor.row * this.cellHeight;
 
 		this.ctx.fillStyle = "#ffffff";
-		this.ctx.fillRect(x, y + this.cellHeight - 2, this.cellWidth, 2);
+
+		// Get cursor style based on current mode - FIX: use current mode index
+		const modeStyle =
+			this.modeStyles && this.currentModeIndex !== undefined
+				? this.modeStyles[this.currentModeIndex]
+				: null;
+		const cursorShape = modeStyle
+			? modeStyle.cursorShape
+			: this.getCursorShapeForMode(this.cursorMode);
+
+		switch (cursorShape) {
+			case "block":
+				// Block cursor (normal mode)
+				this.ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
+				// Draw character in reverse
+				const cell =
+					this.grid[this.cursor.row] &&
+					this.grid[this.cursor.row][this.cursor.col];
+				if (cell && cell.char && cell.char !== " ") {
+					this.ctx.fillStyle = cell.bg || this.colors.bg;
+					this.ctx.fillText(cell.char, x, y + 2);
+				}
+				break;
+
+			case "vertical":
+				// Vertical bar cursor (insert mode)
+				this.ctx.fillRect(x, y, 2, this.cellHeight);
+				break;
+
+			case "horizontal":
+				// Horizontal cursor (replace mode)
+				const height = Math.max(2, Math.floor(this.cellHeight * 0.2));
+				this.ctx.fillRect(
+					x,
+					y + this.cellHeight - height,
+					this.cellWidth,
+					height,
+				);
+				break;
+
+			default:
+				// Default to underline
+				this.ctx.fillRect(x, y + this.cellHeight - 2, this.cellWidth, 2);
+		}
+	}
+
+	getCursorShapeForMode(mode) {
+		// Fallback cursor shapes based on mode name
+		switch (mode) {
+			case "normal":
+			case "visual":
+			case "select":
+				return "block";
+			case "insert":
+				return "vertical";
+			case "replace":
+				return "horizontal";
+			case "cmdline":
+			case "cmdline_normal":
+				return "horizontal";
+			default:
+				return "block";
+		}
+	}
+
+	startCursorBlink() {
+		if (this.cursorBlinkTimer) {
+			clearInterval(this.cursorBlinkTimer);
+		}
+
+		const modeStyle =
+			this.modeStyles && this.currentModeIndex !== undefined
+				? this.modeStyles[this.currentModeIndex]
+				: null;
+
+		if (modeStyle && (modeStyle.blinkon > 0 || modeStyle.blinkoff > 0)) {
+			this.cursorBlinkTimer = setInterval(() => {
+				this.cursorVisible = !this.cursorVisible;
+				this.redraw();
+			}, modeStyle.blinkon || 500);
+		} else {
+			this.cursorVisible = true;
+		}
 	}
 
 	handleRedrawEvent(event) {
@@ -182,6 +264,12 @@ class NeovimRenderer {
 		const eventData = event.slice(1);
 
 		switch (eventType) {
+			case "mode_change":
+				this.handleModeChange(eventData);
+				break;
+			case "mode_info_set":
+				this.handleModeInfoSet(eventData);
+				break;
 			case "option_set":
 				this.handleOptionSet(eventData);
 				break;
@@ -218,6 +306,37 @@ class NeovimRenderer {
 				break;
 			default:
 				console.log("Unhandled event type:", eventType, eventData);
+		}
+	}
+
+	handleModeChange(eventData) {
+		for (const modeData of eventData) {
+			const [mode, modeIdx] = modeData;
+			this.cursorMode = mode;
+			this.currentModeIndex = modeIdx; // Add this line
+			this.startCursorBlink();
+		}
+	}
+
+	handleModeInfoSet(eventData) {
+		// Store cursor style information for different modes
+		for (const modeInfo of eventData) {
+			const [cursorStyleEnabled, modeInfoList] = modeInfo;
+			if (cursorStyleEnabled && Array.isArray(modeInfoList)) {
+				this.modeStyles = {};
+				modeInfoList.forEach((info, idx) => {
+					if (info && typeof info === "object") {
+						this.modeStyles[idx] = {
+							cursorShape: info.cursor_shape || "block",
+							cellPercentage: info.cell_percentage || 100,
+							blinkwait: info.blinkwait || 0,
+							blinkon: info.blinkon || 0,
+							blinkoff: info.blinkoff || 0,
+						};
+					}
+				});
+				this.startCursorBlink();
+			}
 		}
 	}
 
@@ -579,6 +698,7 @@ class NeovimClient {
 					height: this.renderer.rows,
 				}),
 			);
+			this.renderer.startCursorBlink();
 			this.updateStatus("UI attachment requested...");
 		}
 	}
