@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 )
 
 //go:embed static/*
@@ -88,6 +89,7 @@ func (ctx *Server) broadcastToClients(message map[string]interface{}) {
 func (ctx *Server) listenToNeovimEvents() error {
 	// Register handler for UI events
 	ctx.nvim.RegisterHandler("redraw", func(updates ...[]interface{}) {
+		log.Printf("Received redraw events: %d", len(updates))
 		// Broadcast redraw events to all connected clients
 		for _, update := range updates {
 			message := map[string]interface{}{
@@ -108,21 +110,63 @@ func (ctx *Server) listenToNeovimEvents() error {
 }
 
 func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
-	log.Printf("Test: %v", msg)
+	log.Printf("Received message: %v", msg)
 	switch msg["type"] {
+	case "attach_ui":
+		// Add this as a new message type in your client
+		width := int(msg["width"].(float64))
+		height := int(msg["height"].(float64))
+		if err := ctx.nvim.AttachUI(width, height, map[string]interface{}{
+			"ext_linegrid":  true,
+			"ext_multigrid": false,
+			"rgb":           true,
+		}); err != nil {
+			log.Printf("Error attaching UI: %v", err)
+		} else {
+			log.Printf("UI attached successfully with dimensions %dx%d", width, height)
+		}
 	case "input":
 		// Forward keyboard input to Neovim
 		input := msg["data"].(string)
-		ctx.nvim.Input(input)
+		if _, err := ctx.nvim.Input(input); err != nil {
+			log.Printf("Error sending input: %v", err)
+		}
 	case "command":
 		// Execute Neovim command
 		cmd := msg["data"].(string)
-		ctx.nvim.Command(cmd)
+		log.Printf("Executing command: %s", cmd)
+
+		// Check if this is a UI attach command
+		if strings.Contains(cmd, "nvim_ui_attach") {
+			// Extract dimensions and call AttachUI directly
+			if err := ctx.nvim.AttachUI(80, 24, map[string]interface{}{
+				"ext_linegrid":  true,
+				"ext_multigrid": false,
+				"rgb":           true,
+			}); err != nil {
+				log.Printf("Error attaching UI: %v", err)
+			} else {
+				log.Printf("UI attached successfully")
+			}
+		} else if strings.HasPrefix(cmd, "lua ") {
+			// Handle other Lua commands
+			luaCode := strings.TrimPrefix(cmd, "lua ")
+			if err := ctx.nvim.ExecLua(luaCode, nil); err != nil {
+				log.Printf("Error executing Lua: %v", err)
+			}
+		} else {
+			// Handle regular commands
+			if err := ctx.nvim.Command(cmd); err != nil {
+				log.Printf("Error executing command: %v", err)
+			}
+		}
 	case "resize":
 		// Handle terminal resize
 		width := int(msg["width"].(float64))
 		height := int(msg["height"].(float64))
-		ctx.nvim.TryResizeUI(width, height)
+		if err := ctx.nvim.TryResizeUI(width, height); err != nil {
+			log.Printf("Error resizing UI: %v", err)
+		}
 	}
 }
 
