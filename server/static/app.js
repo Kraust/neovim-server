@@ -47,23 +47,13 @@ class NeovimRenderer {
 		}
 	}
 
-	checkFontAvailable(fontName) {
-		const canvas = document.createElement("canvas");
-		const ctx = canvas.getContext("2d");
-
-		ctx.font = "12px monospace";
-		const baselineWidth = ctx.measureText("M").width;
-
-		ctx.font = `12px ${fontName}, monospace`;
-		const testWidth = ctx.measureText("M").width;
-
-		return baselineWidth !== testWidth;
-	}
-
 	setFont(fontString) {
 		const fontMatch =
 			fontString.match(/^([^:]+)(?::h(\d+))?$/) ||
 			fontString.match(/^([^\d]+)\s+(\d+)$/);
+
+		console.log(`fontString: ${fontString}`);
+		console.log(`fontMatch: ${fontMatch}`);
 
 		if (fontMatch) {
 			let fontFamily = fontMatch[1].trim();
@@ -73,13 +63,10 @@ class NeovimRenderer {
 				this.fontSize = newFontSize;
 			}
 
-			if (this.checkFontAvailable(fontFamily)) {
-				this.fontFamily = `${fontFamily}, monospace`;
-			} else {
-				console.warn(`Font ${fontFamily} not available, using fallback`);
-				this.fontFamily = "Consolas, Courier New, monospace";
-			}
+			this.fontFamily = `${fontFamily},monospace`;
 		}
+
+		console.log(`fontFamily: ${this.fontFamily}`);
 
 		this.updateFont();
 
