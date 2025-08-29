@@ -25,6 +25,12 @@ body {
 	cursor: text;
 	margin: 0 20px 20px 20px;
 	width: calc(100vw - 42px);
+	outline: none; /* Remove default focus outline */
+}
+
+#terminal:focus {
+	border-color: #007acc;
+	box-shadow: 0 0 5px rgba(0, 122, 204, 0.5);
 }
 
 #connection-form input {

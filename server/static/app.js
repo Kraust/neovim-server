@@ -147,7 +147,6 @@ class NeovimRenderer {
 			return;
 		}
 
-		// The event structure is [eventType, ...eventData]
 		const eventType = event[0];
 		const eventData = event.slice(1);
 
@@ -160,7 +159,6 @@ class NeovimRenderer {
 				break;
 			case "grid_line":
 				this.handleGridLine(eventData);
-				// Remove redraw call from here
 				break;
 			case "grid_cursor_goto":
 				this.handleCursorGoto(eventData);
@@ -172,13 +170,14 @@ class NeovimRenderer {
 				this.handleDefaultColors(eventData);
 				break;
 			case "flush":
-				this.redraw(); // Only redraw on flush
+				this.redraw();
 				break;
 			case "hl_attr_define":
 				this.handleHlAttrDefine(eventData);
 				break;
 			case "hl_group_set":
-				// Handle highlight group definitions if needed
+				break;
+			case "chdir":
 				break;
 			default:
 				console.log("Unhandled event type:", eventType, eventData);
@@ -429,7 +428,9 @@ class NeovimClient {
 	}
 
 	connect() {
-		this.ws = new WebSocket("ws://localhost:9998/ws");
+		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+		const wsUrl = `${protocol}//${window.location.host}/ws`;
+		this.ws = new WebSocket(wsUrl);
 
 		this.ws.onopen = () => {
 			this.updateStatus("WebSocket connected");
@@ -457,8 +458,14 @@ class NeovimClient {
 		const terminal = document.getElementById("terminal");
 		if (!terminal) return;
 
+		// Add focus on click
+		terminal.addEventListener("click", () => {
+			terminal.focus();
+		});
+
 		terminal.addEventListener("mousedown", (event) => {
 			if (!this.connected || !this.renderer) return;
+			terminal.focus(); // Ensure focus on mouse interaction
 
 			const coords = this.getMouseCoords(event);
 			this.sendMouseEvent("press", coords.row, coords.col, event.button);
