@@ -763,7 +763,8 @@ class NeovimClient {
 		const terminal = document.getElementById("terminal");
 		if (!terminal) return;
 
-		// Add focus on click
+		let dragThrottle = null;
+
 		terminal.addEventListener("click", () => {
 			terminal.focus();
 		});
@@ -792,6 +793,22 @@ class NeovimClient {
 			const direction = event.deltaY > 0 ? "down" : "up";
 			this.sendScrollEvent(direction, coords.row, coords.col);
 			event.preventDefault();
+		});
+
+		terminal.addEventListener("mousemove", (event) => {
+			if (!this.connected || !this.renderer) return;
+
+			if (event.buttons > 0) {
+				// Throttle drag events to avoid overwhelming the server
+				if (!dragThrottle) {
+					dragThrottle = setTimeout(() => {
+						const coords = this.getMouseCoords(event);
+						this.sendMouseEvent("drag", coords.row, coords.col, event.button);
+						dragThrottle = null;
+					}, 16); // ~60fps
+				}
+				event.preventDefault();
+			}
 		});
 	}
 

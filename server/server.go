@@ -172,18 +172,21 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 		row := int(msg["row"].(float64))
 		col := int(msg["col"].(float64))
 
-		// Convert to Neovim input format
 		var input string
 		switch button {
 		case 0: // Left button
 			if action == "press" {
 				input = fmt.Sprintf("<LeftMouse><%d,%d>", col, row)
+			} else if action == "drag" {
+				input = fmt.Sprintf("<LeftDrag><%d,%d>", col, row)
 			} else {
 				input = fmt.Sprintf("<LeftRelease><%d,%d>", col, row)
 			}
 		case 2: // Right button
 			if action == "press" {
 				input = fmt.Sprintf("<RightMouse><%d,%d>", col, row)
+			} else if action == "drag" {
+				input = fmt.Sprintf("<RightDrag><%d,%d>", col, row)
 			} else {
 				input = fmt.Sprintf("<RightRelease><%d,%d>", col, row)
 			}
