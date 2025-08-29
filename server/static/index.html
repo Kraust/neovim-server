@@ -6,17 +6,32 @@
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 0;
             font-family: Arial, sans-serif;
             background: #1a1a1a;
             color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         #connection-form {
-            margin-bottom: 20px;
+            flex-shrink: 0;
+            margin: 20px;
             padding: 10px;
             background: #2a2a2a;
             border-radius: 5px;
+        }
+
+        #terminal {
+            flex: 1;
+            border: 1px solid #555;
+            background: #000;
+            display: block;
+            cursor: text;
+            margin: 0 20px 20px 20px;
+            width: calc(100vw - 42px);
+            /* Account for margins and border */
         }
 
         #connection-form input {
@@ -45,13 +60,6 @@
             margin-top: 10px;
             padding: 5px;
             font-size: 14px;
-        }
-
-        #terminal {
-            border: 1px solid #555;
-            background: #000;
-            display: block;
-            cursor: text;
         }
     </style>
 </head>

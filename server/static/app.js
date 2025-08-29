@@ -2,6 +2,8 @@ class NeovimRenderer {
 	constructor(canvas) {
 		this.canvas = canvas;
 		this.ctx = canvas.getContext("2d");
+		this.fontFamily = "monospace";
+		this.fontSize = 16;
 		this.cellWidth = 12;
 		this.cellHeight = 20;
 		this.rows = 24;
@@ -16,6 +18,80 @@ class NeovimRenderer {
 
 		this.initGrid();
 		this.setupCanvas();
+		this.updateFont();
+	}
+
+	updateFont() {
+		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+		this.ctx.textBaseline = "top";
+
+		// Measure character dimensions
+		const metrics = this.ctx.measureText("M");
+		this.cellWidth = Math.ceil(metrics.width);
+		this.cellHeight = Math.ceil(this.fontSize * 1.2); // Add line spacing
+
+		// Recalculate grid dimensions based on current canvas size
+		const currentWidth = this.canvas.offsetWidth;
+		const currentHeight = this.canvas.offsetHeight;
+
+		this.cols = Math.floor(currentWidth / this.cellWidth);
+		this.rows = Math.floor(currentHeight / this.cellHeight);
+
+		// Update canvas resolution to match display size
+		this.canvas.width = currentWidth;
+		this.canvas.height = currentHeight;
+
+		// Reset font after canvas resize (canvas resize clears context)
+		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+		this.ctx.textBaseline = "top";
+
+		this.initGrid();
+		this.redraw();
+	}
+
+	checkFontAvailable(fontName) {
+		const canvas = document.createElement("canvas");
+		const ctx = canvas.getContext("2d");
+
+		ctx.font = "12px monospace";
+		const baselineWidth = ctx.measureText("M").width;
+
+		ctx.font = `12px ${fontName}, monospace`;
+		const testWidth = ctx.measureText("M").width;
+
+		return baselineWidth !== testWidth;
+	}
+
+	setFont(fontString) {
+		const fontMatch =
+			fontString.match(/^([^:]+)(?::h(\d+))?$/) ||
+			fontString.match(/^([^\d]+)\s+(\d+)$/);
+
+		if (fontMatch) {
+			let fontFamily = fontMatch[1].trim();
+			const newFontSize = parseInt(fontMatch[2]) || 16;
+
+			// Only update if size actually changed
+			if (newFontSize !== this.fontSize) {
+				this.fontSize = newFontSize;
+				console.log(`Font size changed to: ${this.fontSize}px`);
+			}
+
+			// Check if font is available, fallback to system alternatives
+			if (this.checkFontAvailable(fontFamily)) {
+				this.fontFamily = `${fontFamily}, monospace`;
+			} else {
+				console.warn(`Font ${fontFamily} not available, using fallback`);
+				this.fontFamily = "Consolas, Courier New, monospace";
+			}
+		}
+
+		this.updateFont();
+
+		// Notify client to send resize to server
+		if (window.client && window.client.connected) {
+			window.client.sendResize(this.cols, this.rows);
+		}
 	}
 
 	initGrid() {
@@ -85,6 +161,7 @@ class NeovimRenderer {
 		switch (eventType) {
 			case "option_set":
 				console.log("Option set:", eventData);
+				this.handleOptionSet(eventData);
 				break;
 			case "grid_resize":
 				console.log("Grid resize:", eventData);
@@ -93,6 +170,7 @@ class NeovimRenderer {
 			case "grid_line":
 				console.log("Grid line:", eventData);
 				this.handleGridLine(eventData);
+				// Remove redraw call from here
 				break;
 			case "grid_cursor_goto":
 				console.log("Cursor goto:", eventData);
@@ -108,7 +186,7 @@ class NeovimRenderer {
 				break;
 			case "flush":
 				console.log("Flush event - redrawing");
-				this.redraw();
+				this.redraw(); // Only redraw on flush
 				break;
 			case "hl_attr_define":
 				this.handleHlAttrDefine(eventData);
@@ -121,20 +199,50 @@ class NeovimRenderer {
 		}
 	}
 
+	handleOptionSet(eventData) {
+		for (const optionData of eventData) {
+			const [name, value] = optionData;
+			console.log(`Option ${name} set to:`, value);
+
+			switch (name) {
+				case "guifont":
+					if (value && typeof value === "string") {
+						this.setFont(value);
+					}
+					break;
+				case "linespace":
+					if (typeof value === "number") {
+						this.cellHeight = Math.ceil(this.fontSize * (1.2 + value / 10));
+						this.setupCanvas();
+					}
+					break;
+			}
+		}
+	}
+
 	handleHlAttrDefine(eventData) {
 		for (const hlData of eventData) {
 			const [id, rgbAttrs, ctermAttrs, info] = hlData;
+
+			// Ensure we have valid RGB attributes
+			const attrs = rgbAttrs || {};
+
 			this.highlights.set(id, {
-				fg: rgbAttrs.foreground
-					? this.rgbToHex(rgbAttrs.foreground)
-					: this.colors.fg,
-				bg: rgbAttrs.background
-					? this.rgbToHex(rgbAttrs.background)
-					: this.colors.bg,
-				bold: rgbAttrs.bold || false,
-				italic: rgbAttrs.italic || false,
-				underline: rgbAttrs.underline || false,
+				fg:
+					attrs.foreground !== undefined
+						? this.rgbToHex(attrs.foreground)
+						: this.colors.fg,
+				bg:
+					attrs.background !== undefined
+						? this.rgbToHex(attrs.background)
+						: this.colors.bg,
+				bold: attrs.bold || false,
+				italic: attrs.italic || false,
+				underline: attrs.underline || false,
+				reverse: attrs.reverse || false,
 			});
+
+			console.log(`Highlight ${id} defined:`, this.highlights.get(id));
 		}
 	}
 
@@ -162,30 +270,34 @@ class NeovimRenderer {
 	handleGridLine(eventData) {
 		if (!eventData || eventData.length === 0) return;
 
-		// Each element in eventData is a line update: [grid, row, colStart, cells, wrap]
 		for (const lineData of eventData) {
 			if (!Array.isArray(lineData) || lineData.length < 4) continue;
 
 			const [grid, row, colStart, cells, wrap] = lineData;
 
-			if (grid !== 1) continue; // Only handle main grid
+			if (grid !== 1) continue;
 			if (row >= this.rows || row < 0) continue;
 
 			let col = colStart;
+			let currentHlId = 0; // Track current highlight ID
+
 			if (cells && Array.isArray(cells)) {
 				for (const cellData of cells) {
 					if (col >= this.cols) break;
 
-					// Handle different cell data formats from Neovim
 					let char, hlId, repeatCount;
 
 					if (Array.isArray(cellData)) {
 						char = cellData[0] || " ";
-						hlId = cellData.length > 1 ? cellData[1] : 0;
+						// Update highlight ID if provided, otherwise keep current
+						if (cellData.length > 1 && cellData[1] !== undefined) {
+							currentHlId = cellData[1];
+						}
+						hlId = currentHlId;
 						repeatCount = cellData.length > 2 ? cellData[2] : 1;
 					} else {
 						char = cellData || " ";
-						hlId = 0;
+						hlId = currentHlId; // Use current highlight
 						repeatCount = 1;
 					}
 
@@ -194,6 +306,7 @@ class NeovimRenderer {
 							fg: this.colors.fg,
 							bg: this.colors.bg,
 						};
+
 						this.grid[row][col] = {
 							char: char,
 							fg: highlight.fg,
@@ -205,8 +318,7 @@ class NeovimRenderer {
 			}
 		}
 
-		// Redraw after processing all lines
-		this.redraw();
+		// Don't redraw immediately - wait for flush event
 	}
 
 	handleCursorGoto(args) {
@@ -238,11 +350,15 @@ class NeovimRenderer {
 	}
 
 	rgbToHex(rgb) {
-		if (rgb === undefined || rgb === null || rgb === -1) {
-			return rgb === -1 ? "#000000" : "#ffffff";
+		if (rgb === undefined || rgb === null) {
+			return null; // Let caller handle default
 		}
-		// Ensure positive value and convert to hex
-		const value = Math.abs(rgb);
+		if (rgb === -1) {
+			return null; // Use default color
+		}
+
+		// Handle negative values (Neovim sometimes sends these)
+		const value = rgb < 0 ? 0xffffff + rgb + 1 : rgb;
 		return "#" + value.toString(16).padStart(6, "0");
 	}
 
@@ -277,11 +393,26 @@ class NeovimClient {
 		const canvas = document.getElementById("terminal");
 		if (canvas) {
 			this.renderer = new NeovimRenderer(canvas);
+
+			// Set initial canvas size to fill available space
+			const connectionForm = document.getElementById("connection-form");
+			const formHeight = connectionForm ? connectionForm.offsetHeight + 40 : 80;
+			const containerWidth = window.innerWidth - 42;
+			const containerHeight = window.innerHeight - formHeight - 40;
+
+			canvas.style.width = containerWidth + "px";
+			canvas.style.height = containerHeight + "px";
+
+			const newDimensions = this.renderer.resize(
+				containerWidth,
+				containerHeight,
+			);
+
 			console.log(
 				"Renderer initialized with dimensions:",
-				this.renderer.cols,
+				newDimensions.width,
 				"x",
-				this.renderer.rows,
+				newDimensions.height,
 			);
 		}
 	}
@@ -418,31 +549,41 @@ class NeovimClient {
 	setupResizeHandler() {
 		let resizeTimeout;
 
-		window.addEventListener("resize", () => {
+		const handleResize = () => {
 			if (!this.connected || !this.renderer) return;
 
-			// Debounce resize events
+			const canvas = document.getElementById("terminal");
+			if (!canvas) return;
+
+			// Get the connection form height
+			const connectionForm = document.getElementById("connection-form");
+			const formHeight = connectionForm ? connectionForm.offsetHeight + 40 : 80; // Include margins
+
+			// Calculate available space
+			const containerWidth = window.innerWidth - 42; // Account for margins and border
+			const containerHeight = window.innerHeight - formHeight - 40; // Account for form and margins
+
+			// Update canvas size
+			canvas.style.width = containerWidth + "px";
+			canvas.style.height = containerHeight + "px";
+
+			// Calculate new grid dimensions
+			const newDimensions = this.renderer.resize(
+				containerWidth,
+				containerHeight,
+			);
+
+			console.log("Resizing to:", newDimensions);
+			this.sendResize(newDimensions.width, newDimensions.height);
+		};
+
+		window.addEventListener("resize", () => {
 			clearTimeout(resizeTimeout);
-			resizeTimeout = setTimeout(() => {
-				const canvas = document.getElementById("terminal");
-				if (!canvas) return;
-
-				// Get container dimensions (you might want to adjust this)
-				const containerWidth = window.innerWidth - 40; // Account for padding
-				const containerHeight = window.innerHeight - 120; // Account for form and padding
-
-				// Calculate new grid dimensions
-				const newDimensions = this.renderer.resize(
-					containerWidth,
-					containerHeight,
-				);
-
-				console.log("Resizing to:", newDimensions);
-
-				// Send resize message to server
-				this.sendResize(newDimensions.width, newDimensions.height);
-			}, 100);
+			resizeTimeout = setTimeout(handleResize, 100);
 		});
+
+		// Initial resize
+		setTimeout(handleResize, 100);
 	}
 
 	sendResize(width, height) {
@@ -509,6 +650,7 @@ class NeovimClient {
 
 // Initialize client
 const client = new NeovimClient();
+window.client = client; // Make globally accessible
 
 // Setup keyboard handlers immediately
 client.setupKeyboardHandlers();
