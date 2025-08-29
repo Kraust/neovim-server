@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Neovim Web Client</title>
     <style>
@@ -16,15 +17,17 @@
         }
     </style>
 </head>
+
 <body>
     <div id="connection-form">
         <input type="text" id="nvim-address" placeholder="localhost:6666" value="localhost:6666">
         <button onclick="console.log('Button clicked'); connectToNeovim();">Connect to Neovim</button>
         <div id="status"></div>
     </div>
-    
+
     <textarea id="terminal" placeholder="Connect to Neovim first, then start typing..."></textarea>
 
     <script src="app.js"></script>
 </body>
+
 </html>
