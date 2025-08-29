@@ -430,8 +430,11 @@ class NeovimClient {
 					"Connected to Neovim successfully! Initializing UI...",
 				);
 				this.initRenderer();
-				// Request UI attachment
 				this.attachUI();
+
+				// Enable mouse support in Neovim
+				this.sendCommand("set mouse=a");
+
 				document.getElementById("terminal").focus();
 				break;
 			case "error":
@@ -454,12 +457,6 @@ class NeovimClient {
 
 	attachUI() {
 		if (this.connected && this.ws && this.renderer) {
-			console.log(
-				"Attaching UI with dimensions:",
-				this.renderer.cols,
-				"x",
-				this.renderer.rows,
-			);
 			this.ws.send(
 				JSON.stringify({
 					type: "attach_ui",
@@ -478,7 +475,8 @@ class NeovimClient {
 		this.ws.onopen = () => {
 			console.log("WebSocket connected");
 			this.updateStatus("WebSocket connected");
-			this.setupResizeHandler(); // Add this line
+			this.setupResizeHandler();
+			this.setupMouseHandlers();
 		};
 
 		this.ws.onmessage = (event) => {
@@ -497,6 +495,77 @@ class NeovimClient {
 			console.error("WebSocket error:", error);
 			this.updateStatus("WebSocket error");
 		};
+	}
+
+	setupMouseHandlers() {
+		const terminal = document.getElementById("terminal");
+		if (!terminal) return;
+
+		terminal.addEventListener("mousedown", (event) => {
+			if (!this.connected || !this.renderer) return;
+
+			const coords = this.getMouseCoords(event);
+			this.sendMouseEvent("press", coords.row, coords.col, event.button);
+			event.preventDefault();
+		});
+
+		terminal.addEventListener("mouseup", (event) => {
+			if (!this.connected || !this.renderer) return;
+
+			const coords = this.getMouseCoords(event);
+			this.sendMouseEvent("release", coords.row, coords.col, event.button);
+			event.preventDefault();
+		});
+
+		terminal.addEventListener("wheel", (event) => {
+			if (!this.connected || !this.renderer) return;
+
+			const coords = this.getMouseCoords(event);
+			const direction = event.deltaY > 0 ? "down" : "up";
+			this.sendScrollEvent(direction, coords.row, coords.col);
+			event.preventDefault();
+		});
+	}
+
+	getMouseCoords(event) {
+		const rect = event.target.getBoundingClientRect();
+		const x = event.clientX - rect.left;
+		const y = event.clientY - rect.top;
+
+		const col = Math.floor(x / this.renderer.cellWidth);
+		const row = Math.floor(y / this.renderer.cellHeight);
+
+		return {
+			row: Math.max(0, Math.min(row, this.renderer.rows - 1)),
+			col: Math.max(0, Math.min(col, this.renderer.cols - 1)),
+		};
+	}
+
+	sendMouseEvent(action, row, col, button) {
+		if (!this.connected || !this.ws) return;
+
+		this.ws.send(
+			JSON.stringify({
+				type: "mouse",
+				action: action,
+				button: button,
+				row: row,
+				col: col,
+			}),
+		);
+	}
+
+	sendScrollEvent(direction, row, col) {
+		if (!this.connected || !this.ws) return;
+
+		this.ws.send(
+			JSON.stringify({
+				type: "scroll",
+				direction: direction,
+				row: row,
+				col: col,
+			}),
+		);
 	}
 
 	setupKeyboardHandlers() {

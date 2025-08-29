@@ -113,14 +113,14 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 	log.Printf("Received message: %v", msg)
 	switch msg["type"] {
 	case "attach_ui":
-		// Add this as a new message type in your client
 		width := int(msg["width"].(float64))
 		height := int(msg["height"].(float64))
-		if err := ctx.nvim.AttachUI(width, height, map[string]interface{}{
+		options := map[string]interface{}{
 			"ext_linegrid":  true,
 			"ext_multigrid": false,
 			"rgb":           true,
-		}); err != nil {
+		}
+		if err := ctx.nvim.AttachUI(width, height, options); err != nil {
 			log.Printf("Error attaching UI: %v", err)
 		} else {
 			log.Printf("UI attached successfully with dimensions %dx%d", width, height)
@@ -167,7 +167,52 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 		if err := ctx.nvim.TryResizeUI(width, height); err != nil {
 			log.Printf("Error resizing UI: %v", err)
 		}
+	case "mouse":
+		action := msg["action"].(string)
+		button := int(msg["button"].(float64))
+		row := int(msg["row"].(float64))
+		col := int(msg["col"].(float64))
+
+		// Convert to Neovim input format
+		var input string
+		switch button {
+		case 0: // Left button
+			if action == "press" {
+				input = fmt.Sprintf("<LeftMouse><%d,%d>", col, row)
+			} else {
+				input = fmt.Sprintf("<LeftRelease><%d,%d>", col, row)
+			}
+		case 2: // Right button
+			if action == "press" {
+				input = fmt.Sprintf("<RightMouse><%d,%d>", col, row)
+			} else {
+				input = fmt.Sprintf("<RightRelease><%d,%d>", col, row)
+			}
+		}
+
+		if input != "" {
+			if _, err := ctx.nvim.Input(input); err != nil {
+				log.Printf("Error sending mouse input: %v", err)
+			}
+		}
+	case "scroll":
+		direction := msg["direction"].(string)
+		row := int(msg["row"].(float64))
+		col := int(msg["col"].(float64))
+
+		var input string
+		if direction == "up" {
+			input = fmt.Sprintf("<ScrollWheelUp><%d,%d>", col, row)
+		} else {
+			input = fmt.Sprintf("<ScrollWheelDown><%d,%d>", col, row)
+		}
+
+		if _, err := ctx.nvim.Input(input); err != nil {
+			log.Printf("Error sending scroll input: %v", err)
+		}
+
 	}
+
 }
 
 func (ctx *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
