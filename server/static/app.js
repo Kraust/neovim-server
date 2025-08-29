@@ -863,19 +863,8 @@ class NeovimClient {
 
 			terminal.addEventListener("keydown", (event) => {
 				if (!this.connected) return;
-
-				// Don't prevent default for certain browser shortcuts
-				if (
-					event.ctrlKey &&
-					["r", "f", "t", "w", "n"].includes(event.key.toLowerCase())
-				) {
-					return; // Allow browser shortcuts
-				}
-
 				event.preventDefault();
-
 				let key = this.translateKey(event);
-
 				if (key) {
 					this.sendInput(key);
 				}
