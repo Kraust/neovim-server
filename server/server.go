@@ -89,7 +89,6 @@ func (ctx *Server) broadcastToClients(message map[string]interface{}) {
 func (ctx *Server) listenToNeovimEvents() error {
 	// Register handler for UI events
 	ctx.nvim.RegisterHandler("redraw", func(updates ...[]interface{}) {
-		log.Printf("Received redraw events: %d", len(updates))
 		// Broadcast redraw events to all connected clients
 		for _, update := range updates {
 			message := map[string]interface{}{
