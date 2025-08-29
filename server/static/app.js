@@ -25,23 +25,20 @@ class NeovimRenderer {
 		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
 		this.ctx.textBaseline = "top";
 
-		// Measure character dimensions
-		const metrics = this.ctx.measureText("M");
-		this.cellWidth = Math.ceil(metrics.width);
+		// Force cell width to be exactly fontSize * 0.6 for most monospace fonts
+		// Adjust this multiplier based on your Iosevka variant
+		this.cellWidth = Math.round(this.fontSize * 0.6);
 		this.cellHeight = Math.ceil(this.fontSize * 1.2);
 
-		// Get current canvas dimensions
 		const currentWidth = this.canvas.width || this.canvas.offsetWidth;
 		const currentHeight = this.canvas.height || this.canvas.offsetHeight;
 
-		// Recalculate grid based on new cell dimensions
 		this.cols = Math.floor(currentWidth / this.cellWidth);
 		this.rows = Math.floor(currentHeight / this.cellHeight);
 
 		this.initGrid();
 		this.redraw();
 
-		// Notify client to send resize if connected
 		if (window.client && window.client.connected) {
 			window.client.sendResize(this.cols, this.rows);
 		}
@@ -103,18 +100,67 @@ class NeovimRenderer {
 		this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 	}
 
+	isDoubleWidth(char) {
+		if (!char || char.length === 0) return false;
+
+		const code = char.codePointAt(0);
+		if (!code) return false;
+
+		// Common double-width ranges
+		return (
+			// CJK Unified Ideographs
+			(code >= 0x4e00 && code <= 0x9fff) ||
+			// CJK Extension A
+			(code >= 0x3400 && code <= 0x4dbf) ||
+			// Hangul Syllables
+			(code >= 0xac00 && code <= 0xd7af) ||
+			// Hiragana
+			(code >= 0x3040 && code <= 0x309f) ||
+			// Katakana
+			(code >= 0x30a0 && code <= 0x30ff) ||
+			// Emoji ranges
+			(code >= 0x1f600 && code <= 0x1f64f) || // Emoticons
+			(code >= 0x1f300 && code <= 0x1f5ff) || // Misc Symbols
+			(code >= 0x1f680 && code <= 0x1f6ff) || // Transport
+			(code >= 0x1f1e0 && code <= 0x1f1ff) || // Flags
+			(code >= 0x2600 && code <= 0x26ff) || // Misc symbols
+			(code >= 0x2700 && code <= 0x27bf) || // Dingbats
+			// Additional emoji ranges
+			(code >= 0x1f900 && code <= 0x1f9ff) ||
+			(code >= 0x1fa70 && code <= 0x1faff)
+		);
+	}
+
 	drawCell(row, col, cell) {
 		const x = col * this.cellWidth;
 		const y = row * this.cellHeight;
 
-		// Draw background
+		// Draw background - always draw single cell width
 		this.ctx.fillStyle = cell.bg;
 		this.ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
+
+		// For double-width characters, also draw the next cell's background
+		if (cell.isDoubleWidth && col + 1 < this.cols) {
+			this.ctx.fillRect(x + this.cellWidth, y, this.cellWidth, this.cellHeight);
+		}
 
 		// Draw character
 		if (cell.char && cell.char !== " ") {
 			this.ctx.fillStyle = cell.fg;
-			this.ctx.fillText(cell.char, x + 2, y + 2);
+
+			if (cell.isDoubleWidth) {
+				this.ctx.save();
+				this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+				this.ctx.textAlign = "left"; // Changed from "center"
+				this.ctx.textBaseline = "top";
+				// Render at the start of the first cell, let the character naturally span
+				this.ctx.fillText(cell.char, x, y + 2);
+				this.ctx.restore();
+				this.ctx.textAlign = "start";
+				this.ctx.textBaseline = "top";
+			} else {
+				this.ctx.fillText(cell.char, x, y + 2);
+			}
 		}
 	}
 
@@ -318,7 +364,7 @@ class NeovimRenderer {
 			if (row >= this.rows || row < 0) continue;
 
 			let col = colStart;
-			let currentHlId = 0; // Track current highlight ID
+			let currentHlId = 0;
 
 			if (cells && Array.isArray(cells)) {
 				for (const cellData of cells) {
@@ -328,7 +374,6 @@ class NeovimRenderer {
 
 					if (Array.isArray(cellData)) {
 						char = cellData[0] || " ";
-						// Update highlight ID if provided, otherwise keep current
 						if (cellData.length > 1 && cellData[1] !== undefined) {
 							currentHlId = cellData[1];
 						}
@@ -336,7 +381,7 @@ class NeovimRenderer {
 						repeatCount = cellData.length > 2 ? cellData[2] : 1;
 					} else {
 						char = cellData || " ";
-						hlId = currentHlId; // Use current highlight
+						hlId = currentHlId;
 						repeatCount = 1;
 					}
 
@@ -350,23 +395,55 @@ class NeovimRenderer {
 							char: char,
 							fg: highlight.fg,
 							bg: highlight.bg,
+							isDoubleWidth: this.isDoubleWidth(char),
 						};
+
+						// Always advance by 1 - Neovim already handles double-width spacing
 						col++;
 					}
 				}
 			}
 		}
-
-		// Don't redraw immediately - wait for flush event
 	}
 
 	handleCursorGoto(args) {
 		if (!args || args.length === 0) return;
 		const [grid, row, col] = args[0] || args;
 		if (grid === 1) {
-			this.cursor = { row, col };
+			// Convert logical cursor position to visual position
+			const visualCol = this.logicalToVisualCol(row, col);
+			this.cursor = { row, col: visualCol };
 			this.redraw();
 		}
+	}
+
+	logicalToVisualCol(row, logicalCol) {
+		if (row >= this.rows || row < 0) return logicalCol;
+
+		let visualCol = 0;
+		let currentLogicalCol = 0;
+
+		while (currentLogicalCol < logicalCol && visualCol < this.cols) {
+			const cell = this.grid[row] && this.grid[row][visualCol];
+
+			// If no cell data, assume single-width
+			if (!cell) {
+				visualCol++;
+				currentLogicalCol++;
+				continue;
+			}
+
+			// Check if this is a double-width character
+			if (cell.isDoubleWidth) {
+				visualCol += 2; // Skip both visual columns
+			} else {
+				visualCol++;
+			}
+
+			currentLogicalCol++;
+		}
+
+		return Math.min(visualCol, this.cols - 1);
 	}
 
 	handleDefaultColors(args) {
@@ -401,7 +478,14 @@ class NeovimRenderer {
 		this.clear();
 		for (let row = 0; row < this.rows; row++) {
 			for (let col = 0; col < this.cols; col++) {
-				this.drawCell(row, col, this.grid[row][col]);
+				const cell = this.grid[row][col];
+				if (cell) {
+					this.drawCell(row, col, cell);
+					// Skip next column if this is a double-width character
+					if (cell.isDoubleWidth) {
+						col++; // Skip the next column
+					}
+				}
 			}
 		}
 		this.drawCursor();
