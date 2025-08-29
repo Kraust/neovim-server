@@ -71,13 +71,10 @@ class NeovimRenderer {
 			let fontFamily = fontMatch[1].trim();
 			const newFontSize = parseInt(fontMatch[2]) || 16;
 
-			// Only update if size actually changed
 			if (newFontSize !== this.fontSize) {
 				this.fontSize = newFontSize;
-				console.log(`Font size changed to: ${this.fontSize}px`);
 			}
 
-			// Check if font is available, fallback to system alternatives
 			if (this.checkFontAvailable(fontFamily)) {
 				this.fontFamily = `${fontFamily}, monospace`;
 			} else {
@@ -145,8 +142,6 @@ class NeovimRenderer {
 	}
 
 	handleRedrawEvent(event) {
-		console.log("Raw redraw event:", event);
-
 		if (!Array.isArray(event) || event.length === 0) {
 			console.log("Invalid event format:", event);
 			return;
@@ -156,36 +151,27 @@ class NeovimRenderer {
 		const eventType = event[0];
 		const eventData = event.slice(1);
 
-		console.log("Event type:", eventType, "Data:", eventData);
-
 		switch (eventType) {
 			case "option_set":
-				console.log("Option set:", eventData);
 				this.handleOptionSet(eventData);
 				break;
 			case "grid_resize":
-				console.log("Grid resize:", eventData);
 				this.handleGridResize(eventData);
 				break;
 			case "grid_line":
-				console.log("Grid line:", eventData);
 				this.handleGridLine(eventData);
 				// Remove redraw call from here
 				break;
 			case "grid_cursor_goto":
-				console.log("Cursor goto:", eventData);
 				this.handleCursorGoto(eventData);
 				break;
 			case "grid_clear":
-				console.log("Grid clear");
 				this.handleGridClear();
 				break;
 			case "default_colors_set":
-				console.log("Default colors:", eventData);
 				this.handleDefaultColors(eventData);
 				break;
 			case "flush":
-				console.log("Flush event - redrawing");
 				this.redraw(); // Only redraw on flush
 				break;
 			case "hl_attr_define":
@@ -202,8 +188,6 @@ class NeovimRenderer {
 	handleOptionSet(eventData) {
 		for (const optionData of eventData) {
 			const [name, value] = optionData;
-			console.log(`Option ${name} set to:`, value);
-
 			switch (name) {
 				case "guifont":
 					if (value && typeof value === "string") {
@@ -215,6 +199,9 @@ class NeovimRenderer {
 						this.cellHeight = Math.ceil(this.fontSize * (1.2 + value / 10));
 						this.setupCanvas();
 					}
+					break;
+				default:
+					console.log(`Unhandled Option ${name} set to:`, value);
 					break;
 			}
 		}
@@ -241,23 +228,12 @@ class NeovimRenderer {
 				underline: attrs.underline || false,
 				reverse: attrs.reverse || false,
 			});
-
-			console.log(`Highlight ${id} defined:`, this.highlights.get(id));
 		}
 	}
 
 	handleGridResize(args) {
 		if (!args || args.length === 0) return;
 		const [grid, width, height] = args[0] || args;
-		console.log(
-			"Grid resize - Grid:",
-			grid,
-			"Width:",
-			width,
-			"Height:",
-			height,
-		);
-
 		if (grid === 1) {
 			// Main grid
 			this.cols = width;
@@ -324,8 +300,6 @@ class NeovimRenderer {
 	handleCursorGoto(args) {
 		if (!args || args.length === 0) return;
 		const [grid, row, col] = args[0] || args;
-		console.log("Cursor goto - Grid:", grid, "Row:", row, "Col:", col);
-
 		if (grid === 1) {
 			this.cursor = { row, col };
 			this.redraw();
@@ -335,8 +309,6 @@ class NeovimRenderer {
 	handleDefaultColors(args) {
 		if (!args || args.length === 0) return;
 		const [fg, bg] = args[0] || args;
-		console.log("Default colors - FG:", fg, "BG:", bg);
-
 		this.colors.fg = this.rgbToHex(fg);
 		this.colors.bg = this.rgbToHex(bg);
 
@@ -407,25 +379,16 @@ class NeovimClient {
 				containerWidth,
 				containerHeight,
 			);
-
-			console.log(
-				"Renderer initialized with dimensions:",
-				newDimensions.width,
-				"x",
-				newDimensions.height,
-			);
 		}
 	}
 
 	handleMessage(msg) {
 		switch (msg.type) {
 			case "ready":
-				console.log("Ready to connect to Neovim");
 				this.updateStatus("Ready to connect to Neovim");
 				break;
 			case "connected":
 				this.connected = true;
-				console.log("Connected to Neovim");
 				this.updateStatus(
 					"Connected to Neovim successfully! Initializing UI...",
 				);
@@ -443,11 +406,8 @@ class NeovimClient {
 				break;
 			case "redraw":
 				if (this.renderer && Array.isArray(msg.data)) {
-					console.log("Processing redraw event:", msg.data);
-					// msg.data is the complete event: ["grid_line", [1,16,0,[...], false]]
 					this.renderer.handleRedrawEvent(msg.data);
 				} else {
-					console.log("Redraw event but no renderer:", msg.data);
 				}
 				break;
 			default:
@@ -469,24 +429,20 @@ class NeovimClient {
 	}
 
 	connect() {
-		console.log("Attempting WebSocket connection...");
 		this.ws = new WebSocket("ws://localhost:9998/ws");
 
 		this.ws.onopen = () => {
-			console.log("WebSocket connected");
 			this.updateStatus("WebSocket connected");
 			this.setupResizeHandler();
 			this.setupMouseHandlers();
 		};
 
 		this.ws.onmessage = (event) => {
-			console.log("Received message:", event.data);
 			const msg = JSON.parse(event.data);
 			this.handleMessage(msg);
 		};
 
 		this.ws.onclose = () => {
-			console.log("WebSocket disconnected");
 			this.connected = false;
 			this.updateStatus("WebSocket disconnected");
 		};
@@ -607,7 +563,6 @@ class NeovimClient {
 
 				if (key) {
 					this.sendInput(key);
-					console.log("Sent key:", key);
 				}
 			});
 
@@ -642,7 +597,6 @@ class NeovimClient {
 				containerHeight,
 			);
 
-			console.log("Resizing to:", newDimensions);
 			this.sendResize(newDimensions.width, newDimensions.height);
 		};
 
@@ -657,7 +611,6 @@ class NeovimClient {
 
 	sendResize(width, height) {
 		if (this.connected && this.ws) {
-			console.log("Sending resize:", width, "x", height);
 			this.ws.send(
 				JSON.stringify({
 					type: "resize",
@@ -669,11 +622,7 @@ class NeovimClient {
 	}
 
 	connectToNeovim(address) {
-		console.log("connectToNeovim called with address:", address);
-		console.log("WebSocket state:", this.ws ? this.ws.readyState : "null");
-
 		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-			console.log("Sending connect message");
 			this.ws.send(
 				JSON.stringify({
 					type: "connect",
@@ -687,7 +636,6 @@ class NeovimClient {
 	}
 
 	updateStatus(message) {
-		console.log("Status update:", message);
 		const statusDiv = document.getElementById("status");
 		if (statusDiv) {
 			statusDiv.textContent = message;
@@ -726,13 +674,11 @@ client.setupKeyboardHandlers();
 
 // Connect when page loads
 window.addEventListener("load", () => {
-	console.log("Page loaded, connecting...");
 	client.connect();
 });
 
 // Make function globally accessible
 window.connectToNeovim = function () {
-	console.log("Connect button clicked");
 	const addressInput = document.getElementById("nvim-address");
 	if (!addressInput) {
 		console.error("Address input not found");
@@ -740,7 +686,6 @@ window.connectToNeovim = function () {
 	}
 
 	const address = addressInput.value;
-	console.log("Address value:", address);
 
 	if (address.trim()) {
 		client.connectToNeovim(address);
