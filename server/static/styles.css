@@ -7,6 +7,7 @@ body {
 	height: 100vh;
 	display: flex;
 	flex-direction: column;
+	overflow: hidden;
 }
 
 #connection-form {
@@ -15,22 +16,35 @@ body {
 	padding: 10px;
 	background: #2a2a2a;
 	border-radius: 5px;
+	transition: opacity 0.3s ease-out;
 }
 
 #terminal {
 	flex: 1;
-	border: 1px solid #555;
 	background: #000;
-	display: block;
+	display: none; /* Hidden initially */
 	cursor: text;
-	margin: 0 20px 20px 20px;
-	width: calc(100vw - 42px);
-	outline: none; /* Remove default focus outline */
+	margin: 0;
+	padding: 0;
+	border: none;
+	outline: none;
+	transition: all 0.3s ease-out;
+}
+
+#terminal.connected {
+	display: block;
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	margin: 0;
+	padding: 0;
+	border: none;
 }
 
 #terminal:focus {
-	border-color: #007acc;
-	box-shadow: 0 0 5px rgba(0, 122, 204, 0.5);
+	outline: none;
 }
 
 #connection-form input {

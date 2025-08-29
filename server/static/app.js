@@ -3,7 +3,7 @@ class NeovimRenderer {
 		this.canvas = canvas;
 		this.ctx = canvas.getContext("2d");
 		this.fontFamily = "monospace";
-		this.fontSize = 16;
+		this.fontSize = 14; // Reduce from 16 to 14 for better fit
 		this.cellWidth = 12;
 		this.cellHeight = 20;
 		this.rows = 24;
@@ -28,25 +28,23 @@ class NeovimRenderer {
 		// Measure character dimensions
 		const metrics = this.ctx.measureText("M");
 		this.cellWidth = Math.ceil(metrics.width);
-		this.cellHeight = Math.ceil(this.fontSize * 1.2); // Add line spacing
+		this.cellHeight = Math.ceil(this.fontSize * 1.2);
 
-		// Recalculate grid dimensions based on current canvas size
-		const currentWidth = this.canvas.offsetWidth;
-		const currentHeight = this.canvas.offsetHeight;
+		// Get current canvas dimensions
+		const currentWidth = this.canvas.width || this.canvas.offsetWidth;
+		const currentHeight = this.canvas.height || this.canvas.offsetHeight;
 
+		// Recalculate grid based on new cell dimensions
 		this.cols = Math.floor(currentWidth / this.cellWidth);
 		this.rows = Math.floor(currentHeight / this.cellHeight);
 
-		// Update canvas resolution to match display size
-		this.canvas.width = currentWidth;
-		this.canvas.height = currentHeight;
-
-		// Reset font after canvas resize (canvas resize clears context)
-		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
-		this.ctx.textBaseline = "top";
-
 		this.initGrid();
 		this.redraw();
+
+		// Notify client to send resize if connected
+		if (window.client && window.client.connected) {
+			window.client.sendResize(this.cols, this.rows);
+		}
 	}
 
 	checkFontAvailable(fontName) {
@@ -69,7 +67,7 @@ class NeovimRenderer {
 
 		if (fontMatch) {
 			let fontFamily = fontMatch[1].trim();
-			const newFontSize = parseInt(fontMatch[2]) || 16;
+			const newFontSize = parseInt(fontMatch[2]) || 12;
 
 			if (newFontSize !== this.fontSize) {
 				this.fontSize = newFontSize;
@@ -108,7 +106,7 @@ class NeovimRenderer {
 	setupCanvas() {
 		this.canvas.width = this.cols * this.cellWidth;
 		this.canvas.height = this.rows * this.cellHeight;
-		this.ctx.font = `${this.cellHeight - 4}px monospace`;
+		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
 		this.ctx.textBaseline = "top";
 		this.clear();
 	}
@@ -344,10 +342,23 @@ class NeovimRenderer {
 	}
 
 	resize(width, height) {
+		// Set canvas dimensions to match container
+		this.canvas.style.width = width + "px";
+		this.canvas.style.height = height + "px";
+		this.canvas.width = width;
+		this.canvas.height = height;
+
+		// Calculate grid based on cell dimensions
 		this.cols = Math.floor(width / this.cellWidth);
 		this.rows = Math.floor(height / this.cellHeight);
+
 		this.initGrid();
-		this.setupCanvas();
+
+		// Restore font settings after canvas resize
+		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+		this.ctx.textBaseline = "top";
+
+		this.redraw();
 		return { width: this.cols, height: this.rows };
 	}
 }
@@ -364,20 +375,7 @@ class NeovimClient {
 		const canvas = document.getElementById("terminal");
 		if (canvas) {
 			this.renderer = new NeovimRenderer(canvas);
-
-			// Set initial canvas size to fill available space
-			const connectionForm = document.getElementById("connection-form");
-			const formHeight = connectionForm ? connectionForm.offsetHeight + 40 : 80;
-			const containerWidth = window.innerWidth - 42;
-			const containerHeight = window.innerHeight - formHeight - 40;
-
-			canvas.style.width = containerWidth + "px";
-			canvas.style.height = containerHeight + "px";
-
-			const newDimensions = this.renderer.resize(
-				containerWidth,
-				containerHeight,
-			);
+			// Don't set initial size - let resizeTerminalToFullViewport handle it
 		}
 	}
 
@@ -391,8 +389,16 @@ class NeovimClient {
 				this.updateStatus(
 					"Connected to Neovim successfully! Initializing UI...",
 				);
+
+				// Hide connection form and expand terminal
+				this.hideConnectionForm();
 				this.initRenderer();
-				this.attachUI();
+
+				// Ensure terminal is properly sized to full viewport
+				setTimeout(() => {
+					this.resizeTerminalToFullViewport();
+					this.attachUI();
+				}, 100);
 
 				// Enable mouse support in Neovim
 				this.sendCommand("set mouse=a");
@@ -425,6 +431,35 @@ class NeovimClient {
 			);
 			this.updateStatus("UI attachment requested...");
 		}
+	}
+
+	hideConnectionForm() {
+		const connectionForm = document.getElementById("connection-form");
+		const terminal = document.getElementById("terminal");
+
+		if (connectionForm) {
+			connectionForm.style.display = "none";
+		}
+
+		if (terminal) {
+			terminal.classList.add("connected");
+			terminal.style.display = "block";
+		}
+
+		// Trigger resize to expand terminal to full viewport
+		this.resizeTerminalToFullViewport();
+	}
+
+	resizeTerminalToFullViewport() {
+		const canvas = document.getElementById("terminal");
+		if (!canvas || !this.renderer) return;
+
+		// Use exact viewport dimensions
+		const containerWidth = window.innerWidth;
+		const containerHeight = window.innerHeight;
+
+		const newDimensions = this.renderer.resize(containerWidth, containerHeight);
+		this.sendResize(newDimensions.width, newDimensions.height);
 	}
 
 	connect() {
@@ -542,31 +577,17 @@ class NeovimClient {
 			terminal.addEventListener("keydown", (event) => {
 				if (!this.connected) return;
 
+				// Don't prevent default for certain browser shortcuts
+				if (
+					event.ctrlKey &&
+					["r", "f", "t", "w", "n"].includes(event.key.toLowerCase())
+				) {
+					return; // Allow browser shortcuts
+				}
+
 				event.preventDefault();
 
-				let key = "";
-
-				if (event.key === "Enter") {
-					key = "<CR>";
-				} else if (event.key === "Escape") {
-					key = "<Esc>";
-				} else if (event.key === "Backspace") {
-					key = "<BS>";
-				} else if (event.key === "Tab") {
-					key = "<Tab>";
-				} else if (event.key === "ArrowUp") {
-					key = "<Up>";
-				} else if (event.key === "ArrowDown") {
-					key = "<Down>";
-				} else if (event.key === "ArrowLeft") {
-					key = "<Left>";
-				} else if (event.key === "ArrowRight") {
-					key = "<Right>";
-				} else if (event.ctrlKey && event.key.length === 1) {
-					key = `<C-${event.key.toLowerCase()}>`;
-				} else if (event.key.length === 1) {
-					key = event.key;
-				}
+				let key = this.translateKey(event);
 
 				if (key) {
 					this.sendInput(key);
@@ -575,6 +596,155 @@ class NeovimClient {
 
 			terminal.focus();
 		});
+	}
+
+	translateKey(event) {
+		const { key, code, ctrlKey, altKey, shiftKey, metaKey } = event;
+
+		// Handle special keys first
+		const specialKeys = {
+			Enter: "<CR>",
+			Escape: "<Esc>",
+			Backspace: "<BS>",
+			Tab: "<Tab>",
+			Delete: "<Del>",
+			Insert: "<Insert>",
+			Home: "<Home>",
+			End: "<End>",
+			PageUp: "<PageUp>",
+			PageDown: "<PageDown>",
+			ArrowUp: "<Up>",
+			ArrowDown: "<Down>",
+			ArrowLeft: "<Left>",
+			ArrowRight: "<Right>",
+			" ": "<Space>",
+		};
+
+		// Function keys
+		for (let i = 1; i <= 12; i++) {
+			specialKeys[`F${i}`] = `<F${i}>`;
+		}
+
+		// Handle modifier combinations
+		let modifiers = "";
+		if (ctrlKey) modifiers += "C-";
+		if (altKey) modifiers += "A-";
+		if (metaKey) modifiers += "D-"; // Command key on Mac
+		if (shiftKey && !this.isShiftableKey(key)) modifiers += "S-";
+
+		// Handle special keys with modifiers
+		if (specialKeys[key]) {
+			if (modifiers) {
+				return `<${modifiers}${specialKeys[key].slice(1, -1)}>`;
+			}
+			return specialKeys[key];
+		}
+
+		// Handle regular characters
+		if (key.length === 1) {
+			if (modifiers) {
+				// For Ctrl combinations, use lowercase
+				if (ctrlKey && !altKey && !metaKey) {
+					return `<C-${key.toLowerCase()}>`;
+				}
+				// For other modifier combinations
+				return `<${modifiers}${key}>`;
+			}
+			return key;
+		}
+
+		// Handle numeric keypad
+		if (code.startsWith("Numpad")) {
+			const numpadKeys = {
+				Numpad0: "0",
+				Numpad1: "1",
+				Numpad2: "2",
+				Numpad3: "3",
+				Numpad4: "4",
+				Numpad5: "5",
+				Numpad6: "6",
+				Numpad7: "7",
+				Numpad8: "8",
+				Numpad9: "9",
+				NumpadDecimal: ".",
+				NumpadAdd: "+",
+				NumpadSubtract: "-",
+				NumpadMultiply: "*",
+				NumpadDivide: "/",
+				NumpadEnter: "<CR>",
+			};
+
+			if (numpadKeys[code]) {
+				if (modifiers) {
+					return `<${modifiers}${numpadKeys[code]}>`;
+				}
+				return numpadKeys[code];
+			}
+		}
+
+		// Fallback for unhandled keys
+		console.log("Unhandled key:", {
+			key,
+			code,
+			ctrlKey,
+			altKey,
+			shiftKey,
+			metaKey,
+		});
+		return null;
+	}
+
+	isShiftableKey(key) {
+		const shiftableKeys = [
+			"!",
+			"@",
+			"#",
+			"$",
+			"%",
+			"^",
+			"&",
+			"*",
+			"(",
+			")",
+			"_",
+			"+",
+			"{",
+			"}",
+			"|",
+			":",
+			'"',
+			"<",
+			">",
+			"?",
+			"~",
+			"A",
+			"B",
+			"C",
+			"D",
+			"E",
+			"F",
+			"G",
+			"H",
+			"I",
+			"J",
+			"K",
+			"L",
+			"M",
+			"N",
+			"O",
+			"P",
+			"Q",
+			"R",
+			"S",
+			"T",
+			"U",
+			"V",
+			"W",
+			"X",
+			"Y",
+			"Z",
+		];
+		return shiftableKeys.includes(key) || key.length === 1;
 	}
 
 	setupResizeHandler() {
@@ -586,24 +756,31 @@ class NeovimClient {
 			const canvas = document.getElementById("terminal");
 			if (!canvas) return;
 
-			// Get the connection form height
+			// Check if connection form is visible
 			const connectionForm = document.getElementById("connection-form");
-			const formHeight = connectionForm ? connectionForm.offsetHeight + 40 : 80; // Include margins
+			const isFormVisible =
+				connectionForm && connectionForm.style.display !== "none";
 
-			// Calculate available space
-			const containerWidth = window.innerWidth - 42; // Account for margins and border
-			const containerHeight = window.innerHeight - formHeight - 40; // Account for form and margins
+			let containerWidth, containerHeight;
 
-			// Update canvas size
+			if (isFormVisible) {
+				// Form is visible - account for its height
+				const formHeight = connectionForm.offsetHeight + 40;
+				containerWidth = window.innerWidth;
+				containerHeight = window.innerHeight - formHeight - 40;
+			} else {
+				// Form is hidden - use full viewport
+				containerWidth = window.innerWidth;
+				containerHeight = window.innerHeight - 40;
+			}
+
 			canvas.style.width = containerWidth + "px";
 			canvas.style.height = containerHeight + "px";
 
-			// Calculate new grid dimensions
 			const newDimensions = this.renderer.resize(
 				containerWidth,
 				containerHeight,
 			);
-
 			this.sendResize(newDimensions.width, newDimensions.height);
 		};
 
@@ -682,6 +859,20 @@ client.setupKeyboardHandlers();
 // Connect when page loads
 window.addEventListener("load", () => {
 	client.connect();
+});
+
+terminal.addEventListener("keyup", (event) => {
+	if (!this.connected) return;
+});
+
+terminal.addEventListener("paste", (event) => {
+	if (!this.connected) return;
+
+	event.preventDefault();
+	const text = event.clipboardData.getData("text");
+
+	// Send pasted text character by character or as a block
+	this.sendInput(text);
 });
 
 // Make function globally accessible
