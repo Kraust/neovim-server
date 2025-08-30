@@ -38,15 +38,10 @@ func Serve(address string) error {
 		clients: make(map[*websocket.Conn]*ClientSession),
 	}
 
-	// Serve embedded static files
 	staticFS, _ := fs.Sub(staticFiles, "static")
 	http.Handle("/", http.FileServer(http.FS(staticFS)))
 
-	// WebSocket endpoint
 	http.HandleFunc("/ws", ctx.handleWebSocket)
-
-	// API endpoints (optional)
-	http.HandleFunc("/api/status", ctx.handleStatus)
 
 	log.Printf("Server starting on %s", address)
 
@@ -138,7 +133,6 @@ func (ctx *Server) handleClientMessage(session *ClientSession, msg map[string]an
 			log.Printf("Failed to set clipboard variable: %v", err)
 		}
 	default:
-		// Only handle other messages if this session has Neovim connected
 		if !session.active || session.nvim == nil {
 			ctx.sendToClient(session, map[string]any{
 				"type": "error",
@@ -152,7 +146,6 @@ func (ctx *Server) handleClientMessage(session *ClientSession, msg map[string]an
 }
 
 func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]any) {
-	// Check if session is still active
 	if !session.active || session.nvim == nil {
 		ctx.sendToClient(session, map[string]any{
 			"type": "error",
@@ -184,7 +177,6 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]an
 			session.uiAttached = true
 		}
 	case "input":
-		// Forward keyboard input to Neovim
 		input := msg["data"].(string)
 		if _, err := session.nvim.Input(input); err != nil {
 			log.Printf("Error sending input: %v", err)
@@ -197,12 +189,9 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]an
 			}
 		}
 	case "command":
-		// Execute Neovim command
 		cmd := msg["data"].(string)
 
-		// Check if this is a UI attach command
 		if strings.Contains(cmd, "nvim_ui_attach") {
-			// Extract dimensions and call AttachUI directly
 			if err := session.nvim.AttachUI(80, 24, map[string]any{
 				"ext_linegrid":  true,
 				"ext_multigrid": false,
@@ -211,13 +200,11 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]an
 				log.Printf("Error attaching UI: %v", err)
 			}
 		} else if after, ok := strings.CutPrefix(cmd, "lua "); ok {
-			// Handle other Lua commands
 			luaCode := after
 			if err := session.nvim.ExecLua(luaCode, nil); err != nil {
 				log.Printf("Error executing Lua: %v", err)
 			}
 		} else {
-			// Handle regular commands
 			if err := session.nvim.Command(cmd); err != nil {
 				log.Printf("Error executing command: %v", err)
 			}
@@ -250,7 +237,7 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]an
 
 		var input string
 		switch button {
-		case 0: // Left button
+		case 0:
 			switch action {
 			case "press":
 				input = fmt.Sprintf("<LeftMouse><%d,%d>", col, row)
@@ -259,7 +246,7 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]an
 			default:
 				input = fmt.Sprintf("<LeftRelease><%d,%d>", col, row)
 			}
-		case 2: // Right button
+		case 2:
 			switch action {
 			case "press":
 				input = fmt.Sprintf("<RightMouse><%d,%d>", col, row)
@@ -303,7 +290,6 @@ func (ctx *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	// Create new client session
 	session := &ClientSession{
 		conn:   conn,
 		active: false,
@@ -322,13 +308,11 @@ func (ctx *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		ctx.mu.Unlock()
 	}()
 
-	// Send connection ready message
 	conn.WriteJSON(map[string]any{
 		"type": "ready",
 		"data": "WebSocket connected. Please provide Neovim server addresctx.",
 	})
 
-	// Handle incoming messages
 	for {
 		var msg map[string]any
 		err := conn.ReadJSON(&msg)
@@ -345,7 +329,7 @@ func (ctx *Server) detectConnectionLatency(session *ClientSession) time.Duration
 	start := time.Now()
 	var result bool
 	if err := session.nvim.ExecLua("return true", &result); err != nil {
-		return time.Second // Default to high latency
+		return time.Second
 	}
 	return time.Since(start)
 }
@@ -366,12 +350,10 @@ func (ctx *Server) connectSessionToNeovim(session *ClientSession, address string
 	session.active = true
 	log.Printf("Successfully connected client to neovim at %s", address)
 
-	// Set up clipboard IMMEDIATELY after connection, before any UI operations
-	if err := ctx.setupSimpleClipboard(session); err != nil {
+	if err := ctx.setupClipboard(session); err != nil {
 		log.Printf("Failed to setup clipboard: %v", err)
 	}
 
-	// Start event listener
 	go func() {
 		if err := ctx.listenToNeovimEvents(session); err != nil {
 			log.Printf("Error in Neovim event listener: %v", err)
@@ -381,10 +363,9 @@ func (ctx *Server) connectSessionToNeovim(session *ClientSession, address string
 	return nil
 }
 
-func (ctx *Server) setupSimpleClipboard(session *ClientSession) error {
+func (ctx *Server) setupClipboard(session *ClientSession) error {
 	channelID := session.nvim.ChannelID()
 
-	// Set up clipboard provider
 	clipboardConfig := fmt.Sprintf(`
 vim.g.clipboard = {
   name = 'nvim-server',
@@ -405,8 +386,7 @@ vim.g.clipboard = {
 	  vim.g.nvim_server_clipboard = nil
 	  vim.rpcnotify(%d, 'clipboard_paste')
 	  
-	  -- Longer timeout for network latency
-	  local timeout = 300  -- 3 seconds
+	  local timeout = 300
 	  while timeout > 0 and vim.g.nvim_server_clipboard == nil do
 		vim.wait(10)
 		timeout = timeout - 1
@@ -447,7 +427,6 @@ return true
 		return err
 	}
 
-	// Force reload clipboard provider
 	reloadConfig := `
 vim.g.loaded_clipboard_provider = nil
 vim.cmd('runtime autoload/provider/clipboard.vim')
@@ -455,8 +434,7 @@ vim.opt.clipboard = 'unnamedplus'
 return true
 `
 
-	var reloadResult bool
-	if err := session.nvim.ExecLua(reloadConfig, &reloadResult); err != nil {
+	if err := session.nvim.ExecLua(reloadConfig, &result); err != nil {
 		return err
 	}
 
@@ -475,19 +453,4 @@ return true
 	})
 
 	return nil
-}
-
-func (ctx *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	ctx.mu.RLock()
-	activeClients := 0
-	for _, session := range ctx.clients {
-		if session.active {
-			activeClients++
-		}
-	}
-	totalClients := len(ctx.clients)
-	ctx.mu.RUnlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status": "running", "total_clients": %d, "active_clients": %d}`, totalClients, activeClients)
 }
