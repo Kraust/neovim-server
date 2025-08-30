@@ -88,14 +88,21 @@ class NeovimRenderer {
 	}
 
 	setupCanvas() {
-		this.canvas.width = this.cols * this.cellWidth;
-		this.canvas.height = this.rows * this.cellHeight;
+		const dpr = window.devicePixelRatio || 1;
+
+		this.canvas.width = this.cols * this.cellWidth * dpr;
+		this.canvas.height = this.rows * this.cellHeight * dpr;
+
+		this.canvas.style.width = this.cols * this.cellWidth + "px";
+		this.canvas.style.height = this.rows * this.cellHeight + "px";
+
+		this.ctx.scale(dpr, dpr);
 		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
 		this.ctx.textBaseline = "top";
 
-		// Add performance optimizations
-		this.ctx.imageSmoothingEnabled = false; // Disable antialiasing for text
-		this.ctx.textRenderingOptimization = "optimizeSpeed";
+		this.ctx.imageSmoothingEnabled = false;
+		this.ctx.textRenderingOptimization = "optimizeQuality";
+		this.ctx.fillStyle = this.colors.fg;
 
 		this.clear();
 	}
@@ -685,18 +692,23 @@ class NeovimRenderer {
 	}
 
 	resize(width, height) {
+		const dpr = window.devicePixelRatio || 1;
+
 		this.canvas.style.width = width + "px";
 		this.canvas.style.height = height + "px";
-		this.canvas.width = width;
-		this.canvas.height = height;
+		this.canvas.width = width * dpr;
+		this.canvas.height = height * dpr;
 
 		this.cols = Math.floor(width / this.cellWidth);
 		this.rows = Math.floor(height / this.cellHeight);
 
 		this.initGrid();
 
+		this.ctx.scale(dpr, dpr);
 		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
 		this.ctx.textBaseline = "top";
+		this.ctx.imageSmoothingEnabled = false;
+		this.ctx.textRenderingOptimization = "optimizeQuality";
 
 		this.redraw();
 		return { width: this.cols, height: this.rows };
