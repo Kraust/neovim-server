@@ -57,7 +57,7 @@ func Serve(address string) error {
 	return nil
 }
 
-func (s *Server) listenToNeovimEvents(session *ClientSession) error {
+func (ctx *Server) listenToNeovimEvents(session *ClientSession) error {
 	session.nvim.RegisterHandler("redraw", func(updates ...[]any) {
 		if !session.active {
 			return
@@ -67,7 +67,7 @@ func (s *Server) listenToNeovimEvents(session *ClientSession) error {
 				"type": "redraw",
 				"data": update,
 			}
-			s.sendToClient(session, message)
+			ctx.sendToClient(session, message)
 		}
 	})
 
@@ -81,7 +81,7 @@ func (s *Server) listenToNeovimEvents(session *ClientSession) error {
 
 	session.active = false
 	session.uiAttached = false // Reset UI state
-	s.sendToClient(session, map[string]any{
+	ctx.sendToClient(session, map[string]any{
 		"type": "session_closed",
 		"data": "Neovim session has been closed",
 	})
@@ -89,7 +89,7 @@ func (s *Server) listenToNeovimEvents(session *ClientSession) error {
 	return err
 }
 
-func (s *Server) sendToClient(session *ClientSession, message map[string]any) {
+func (ctx *Server) sendToClient(session *ClientSession, message map[string]any) {
 	if !session.active && message["type"] != "session_closed" {
 		return
 	}
@@ -102,43 +102,42 @@ func (s *Server) sendToClient(session *ClientSession, message map[string]any) {
 	}
 }
 
-func (s *Server) handleClientMessage(session *ClientSession, msg map[string]any) {
+func (ctx *Server) handleClientMessage(session *ClientSession, msg map[string]any) {
 	switch msg["type"] {
 	case "connect":
 		address, ok := msg["address"].(string)
 		if !ok {
-			s.sendToClient(session, map[string]any{
+			ctx.sendToClient(session, map[string]any{
 				"type": "error",
 				"data": "Invalid server address",
 			})
 			return
 		}
 
-		if err := s.connectSessionToNeovim(session, address); err != nil {
+		if err := ctx.connectSessionToNeovim(session, address); err != nil {
 			log.Printf("Failed to connect client to Neovim at %s: %v", address, err)
-			s.sendToClient(session, map[string]any{
+			ctx.sendToClient(session, map[string]any{
 				"type": "error",
 				"data": fmt.Sprintf("Failed to connect to Neovim: %v", err),
 			})
 			return
 		}
 
-		s.sendToClient(session, map[string]any{
+		ctx.sendToClient(session, map[string]any{
 			"type": "connected",
 			"data": "Successfully connected to Neovim",
 		})
-
 	default:
 		// Only handle other messages if this session has Neovim connected
 		if !session.active || session.nvim == nil {
-			s.sendToClient(session, map[string]any{
+			ctx.sendToClient(session, map[string]any{
 				"type": "error",
 				"data": "Not connected to Neovim",
 			})
 			return
 		}
 
-		s.handleNeovimCommand(session, msg)
+		ctx.handleNeovimCommand(session, msg)
 	}
 }
 
@@ -288,8 +287,8 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]an
 
 }
 
-func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := s.upgrader.Upgrade(w, r, nil)
+func (ctx *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := ctx.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
@@ -302,23 +301,23 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		active: false,
 	}
 
-	s.mu.Lock()
-	s.clients[conn] = session
-	s.mu.Unlock()
+	ctx.mu.Lock()
+	ctx.clients[conn] = session
+	ctx.mu.Unlock()
 
 	defer func() {
-		s.mu.Lock()
+		ctx.mu.Lock()
 		if session.nvim != nil {
 			session.nvim.Close()
 		}
-		delete(s.clients, conn)
-		s.mu.Unlock()
+		delete(ctx.clients, conn)
+		ctx.mu.Unlock()
 	}()
 
 	// Send connection ready message
 	conn.WriteJSON(map[string]any{
 		"type": "ready",
-		"data": "WebSocket connected. Please provide Neovim server address.",
+		"data": "WebSocket connected. Please provide Neovim server addresctx.",
 	})
 
 	// Handle incoming messages
@@ -330,11 +329,11 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		s.handleClientMessage(session, msg)
+		ctx.handleClientMessage(session, msg)
 	}
 }
 
-func (s *Server) connectSessionToNeovim(session *ClientSession, address string) error {
+func (ctx *Server) connectSessionToNeovim(session *ClientSession, address string) error {
 	// Close existing connection if any
 	if session.nvim != nil {
 		session.nvim.Close()
@@ -353,7 +352,7 @@ func (s *Server) connectSessionToNeovim(session *ClientSession, address string) 
 
 	// Start event listener for this session
 	go func() {
-		if err := s.listenToNeovimEvents(session); err != nil {
+		if err := ctx.listenToNeovimEvents(session); err != nil {
 			log.Printf("Error in Neovim event listener for client: %v", err)
 		}
 	}()
@@ -361,16 +360,16 @@ func (s *Server) connectSessionToNeovim(session *ClientSession, address string) 
 	return nil
 }
 
-func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
+func (ctx *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	ctx.mu.RLock()
 	activeClients := 0
-	for _, session := range s.clients {
+	for _, session := range ctx.clients {
 		if session.active {
 			activeClients++
 		}
 	}
-	totalClients := len(s.clients)
-	s.mu.RUnlock()
+	totalClients := len(ctx.clients)
+	ctx.mu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status": "running", "total_clients": %d, "active_clients": %d}`, totalClients, activeClients)

@@ -169,25 +169,31 @@ class NeovimRenderer {
 		const x = col * this.cellWidth;
 		const y = row * this.cellHeight;
 
-		this.ctx.fillStyle = cell.bg;
-		this.ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
+		// Only fill background if it's different from default
+		if (cell.bg !== this.colors.bg) {
+			this.ctx.fillStyle = cell.bg;
+			this.ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
+		}
 
-		if (cell.isDoubleWidth && col + 1 < this.cols) {
+		// Handle double-width background
+		if (
+			cell.isDoubleWidth &&
+			col + 1 < this.cols &&
+			cell.bg !== this.colors.bg
+		) {
 			this.ctx.fillRect(x + this.cellWidth, y, this.cellWidth, this.cellHeight);
 		}
 
+		// Draw character if not empty
 		if (cell.char && cell.char !== " ") {
 			this.ctx.fillStyle = cell.fg;
 
 			if (cell.isDoubleWidth) {
-				this.ctx.save();
-				this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+				// Minimize context state changes
+				const oldAlign = this.ctx.textAlign;
 				this.ctx.textAlign = "left";
-				this.ctx.textBaseline = "top";
 				this.ctx.fillText(cell.char, x, y + 2);
-				this.ctx.restore();
-				this.ctx.textAlign = "start";
-				this.ctx.textBaseline = "top";
+				this.ctx.textAlign = oldAlign;
 			} else {
 				this.ctx.fillText(cell.char, x, y + 2);
 			}
@@ -634,17 +640,67 @@ class NeovimRenderer {
 
 	redraw() {
 		this.clear();
+
+		// Batch operations by color to reduce context switches
+		const backgroundBatches = new Map();
+		const textBatches = new Map();
+
+		// Collect all operations first
 		for (let row = 0; row < this.rows; row++) {
 			for (let col = 0; col < this.cols; col++) {
 				const cell = this.grid[row][col];
-				if (cell) {
-					this.drawCell(row, col, cell);
-					if (cell.isDoubleWidth) {
-						col++;
+				if (!cell) continue;
+
+				// Group background fills
+				if (cell.bg !== this.colors.bg) {
+					if (!backgroundBatches.has(cell.bg)) {
+						backgroundBatches.set(cell.bg, []);
 					}
+					backgroundBatches
+						.get(cell.bg)
+						.push({ x: col * this.cellWidth, y: row * this.cellHeight });
+				}
+
+				// Group text draws
+				if (cell.char && cell.char !== " ") {
+					if (!textBatches.has(cell.fg)) {
+						textBatches.set(cell.fg, []);
+					}
+					textBatches.get(cell.fg).push({
+						char: cell.char,
+						x: col * this.cellWidth,
+						y: row * this.cellHeight,
+						isDoubleWidth: cell.isDoubleWidth,
+					});
+				}
+
+				if (cell.isDoubleWidth) col++;
+			}
+		}
+
+		// Execute batched background fills
+		for (const [color, rects] of backgroundBatches) {
+			this.ctx.fillStyle = color;
+			for (const rect of rects) {
+				this.ctx.fillRect(rect.x, rect.y, this.cellWidth, this.cellHeight);
+			}
+		}
+
+		// Execute batched text draws
+		for (const [color, texts] of textBatches) {
+			this.ctx.fillStyle = color;
+			for (const text of texts) {
+				if (text.isDoubleWidth) {
+					const oldAlign = this.ctx.textAlign;
+					this.ctx.textAlign = "left";
+					this.ctx.fillText(text.char, text.x, text.y + 2);
+					this.ctx.textAlign = oldAlign;
+				} else {
+					this.ctx.fillText(text.char, text.x, text.y + 2);
 				}
 			}
 		}
+
 		this.drawCursor();
 	}
 
