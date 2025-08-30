@@ -104,28 +104,57 @@ class NeovimRenderer {
 		const code = char.codePointAt(0);
 		if (!code) return false;
 
-		// Common double-width ranges
+		// Use a more comprehensive check including Unicode East Asian Width property
 		return (
 			// CJK Unified Ideographs
 			(code >= 0x4e00 && code <= 0x9fff) ||
 			// CJK Extension A
 			(code >= 0x3400 && code <= 0x4dbf) ||
+			// CJK Extension B
+			(code >= 0x20000 && code <= 0x2a6df) ||
 			// Hangul Syllables
 			(code >= 0xac00 && code <= 0xd7af) ||
 			// Hiragana
 			(code >= 0x3040 && code <= 0x309f) ||
 			// Katakana
 			(code >= 0x30a0 && code <= 0x30ff) ||
-			// Emoji ranges
+			// Emoji ranges (comprehensive)
 			(code >= 0x1f600 && code <= 0x1f64f) || // Emoticons
 			(code >= 0x1f300 && code <= 0x1f5ff) || // Misc Symbols
 			(code >= 0x1f680 && code <= 0x1f6ff) || // Transport
 			(code >= 0x1f1e0 && code <= 0x1f1ff) || // Flags
 			(code >= 0x2600 && code <= 0x26ff) || // Misc symbols
 			(code >= 0x2700 && code <= 0x27bf) || // Dingbats
-			// Additional emoji ranges
-			(code >= 0x1f900 && code <= 0x1f9ff) ||
-			(code >= 0x1fa70 && code <= 0x1faff)
+			(code >= 0x1f900 && code <= 0x1f9ff) || // Supplemental Symbols
+			(code >= 0x1fa70 && code <= 0x1faff) || // Extended-A
+			// Additional ranges for symbols that should be double-width
+			(code >= 0x2e80 && code <= 0x2eff) || // CJK Radicals
+			(code >= 0x2f00 && code <= 0x2fdf) || // Kangxi Radicals
+			(code >= 0x3000 && code <= 0x303f) || // CJK Symbols
+			(code >= 0xff00 && code <= 0xffef) || // Halfwidth/Fullwidth Forms
+			// Nerd Fonts icon ranges
+			(code >= 0x23fb && code <= 0x23fe) || // IEC Power Symbols
+			code === 0x2665 || // Octicons (heart)
+			code === 0x26a1 || // Octicons (lightning)
+			code === 0x2b58 || // IEC Power Symbols
+			(code >= 0xe000 && code <= 0xe00a) || // Pomicons
+			(code >= 0xe0a0 && code <= 0xe0a2) || // Powerline
+			code === 0xe0a3 || // Powerline Extra
+			(code >= 0xe0b0 && code <= 0xe0b3) || // Powerline
+			(code >= 0xe0b4 && code <= 0xe0c8) || // Powerline Extra
+			code === 0xe0ca || // Powerline Extra
+			(code >= 0xe0cc && code <= 0xe0d7) || // Powerline Extra
+			(code >= 0xe200 && code <= 0xe2a9) || // Font Awesome Extension
+			(code >= 0xe300 && code <= 0xe3e3) || // Weather Icons
+			(code >= 0xe5fa && code <= 0xe6b7) || // Seti-UI + Custom
+			(code >= 0xe700 && code <= 0xe8ef) || // Devicons
+			(code >= 0xea60 && code <= 0xec1e) || // Codicons
+			(code >= 0xed00 && code <= 0xefce) || // Font Awesome (relocated)
+			(code >= 0xf000 && code <= 0xf2ff) || // Font Awesome (relocated)
+			(code >= 0xf300 && code <= 0xf381) || // Font Logos
+			(code >= 0xf400 && code <= 0xf533) || // Octicons (relocated)
+			(code >= 0xf500 && code <= 0xfd46) || // Material Design (old range)
+			(code >= 0xf0001 && code <= 0xf1af0) // Material Design (new range)
 		);
 	}
 
