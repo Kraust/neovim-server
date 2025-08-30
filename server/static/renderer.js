@@ -488,14 +488,17 @@ class NeovimRenderer {
 	handleGridLine(eventData) {
 		if (!eventData || eventData.length === 0) return;
 
+		// Process each line immediately but store which rows changed
+		const changedRows = new Set();
+
 		for (const lineData of eventData) {
 			if (!Array.isArray(lineData) || lineData.length < 4) continue;
 
 			const [grid, row, colStart, cells, wrap] = lineData;
 
-			if (grid !== 1) continue;
-			if (row >= this.rows || row < 0) continue;
+			if (grid !== 1 || row >= this.rows || row < 0) continue;
 
+			// Process immediately without merging
 			let col = colStart;
 			let currentHlId = 0;
 
@@ -535,6 +538,8 @@ class NeovimRenderer {
 					}
 				}
 			}
+
+			changedRows.add(row);
 		}
 	}
 
