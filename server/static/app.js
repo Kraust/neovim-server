@@ -3,20 +3,20 @@ class NeovimRenderer {
 		this.canvas = canvas;
 		this.ctx = canvas.getContext("2d");
 		this.fontFamily = "monospace";
-		this.fontSize = 14; // Reduce from 16 to 14 for better fit
+		this.fontSize = 14;
 		this.cellWidth = 12;
 		this.cellHeight = 20;
 		this.rows = 24;
 		this.cols = 80;
 		this.grid = [];
 		this.cursor = { row: 0, col: 0 };
-		this.cursorMode = "normal"; // Add cursor mode tracking
+		this.cursorMode = "normal";
 		this.cursorVisible = true;
 		this.colors = {
 			fg: "#ffffff",
 			bg: "#000000",
 		};
-		this.highlights = new Map(); // Store highlight definitions
+		this.highlights = new Map();
 
 		this.initGrid();
 		this.setupCanvas();
@@ -28,8 +28,6 @@ class NeovimRenderer {
 		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
 		this.ctx.textBaseline = "top";
 
-		// Force cell width to be exactly fontSize * 0.6 for most monospace fonts
-		// Adjust this multiplier based on your Iosevka variant
 		this.cellWidth = Math.round(this.fontSize * 0.6);
 		this.cellHeight = Math.ceil(this.fontSize * 1.2);
 
@@ -162,25 +160,21 @@ class NeovimRenderer {
 		const x = col * this.cellWidth;
 		const y = row * this.cellHeight;
 
-		// Draw background - always draw single cell width
 		this.ctx.fillStyle = cell.bg;
 		this.ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
 
-		// For double-width characters, also draw the next cell's background
 		if (cell.isDoubleWidth && col + 1 < this.cols) {
 			this.ctx.fillRect(x + this.cellWidth, y, this.cellWidth, this.cellHeight);
 		}
 
-		// Draw character
 		if (cell.char && cell.char !== " ") {
 			this.ctx.fillStyle = cell.fg;
 
 			if (cell.isDoubleWidth) {
 				this.ctx.save();
 				this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
-				this.ctx.textAlign = "left"; // Changed from "center"
+				this.ctx.textAlign = "left";
 				this.ctx.textBaseline = "top";
-				// Render at the start of the first cell, let the character naturally span
 				this.ctx.fillText(cell.char, x, y + 2);
 				this.ctx.restore();
 				this.ctx.textAlign = "start";
@@ -199,7 +193,6 @@ class NeovimRenderer {
 
 		this.ctx.fillStyle = "#ffffff";
 
-		// Get cursor style based on current mode - FIX: use current mode index
 		const modeStyle =
 			this.modeStyles && this.currentModeIndex !== undefined
 				? this.modeStyles[this.currentModeIndex]
@@ -210,9 +203,7 @@ class NeovimRenderer {
 
 		switch (cursorShape) {
 			case "block":
-				// Block cursor (normal mode)
 				this.ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
-				// Draw character in reverse
 				const cell =
 					this.grid[this.cursor.row] &&
 					this.grid[this.cursor.row][this.cursor.col];
@@ -223,12 +214,10 @@ class NeovimRenderer {
 				break;
 
 			case "vertical":
-				// Vertical bar cursor (insert mode)
 				this.ctx.fillRect(x, y, 2, this.cellHeight);
 				break;
 
 			case "horizontal":
-				// Horizontal cursor (replace mode)
 				const height = Math.max(2, Math.floor(this.cellHeight * 0.2));
 				this.ctx.fillRect(
 					x,
@@ -239,13 +228,11 @@ class NeovimRenderer {
 				break;
 
 			default:
-				// Default to underline
 				this.ctx.fillRect(x, y + this.cellHeight - 2, this.cellWidth, 2);
 		}
 	}
 
 	getCursorShapeForMode(mode) {
-		// Fallback cursor shapes based on mode name
 		switch (mode) {
 			case "normal":
 			case "visual":
@@ -342,13 +329,12 @@ class NeovimRenderer {
 		for (const modeData of eventData) {
 			const [mode, modeIdx] = modeData;
 			this.cursorMode = mode;
-			this.currentModeIndex = modeIdx; // Add this line
+			this.currentModeIndex = modeIdx;
 			this.startCursorBlink();
 		}
 	}
 
 	handleModeInfoSet(eventData) {
-		// Store cursor style information for different modes
 		for (const modeInfo of eventData) {
 			const [cursorStyleEnabled, modeInfoList] = modeInfo;
 			if (cursorStyleEnabled && Array.isArray(modeInfoList)) {
@@ -375,11 +361,9 @@ class NeovimRenderer {
 
 			const [grid, top, bot, left, right, rows, cols] = scrollData;
 
-			if (grid !== 1) continue; // Only handle main grid
+			if (grid !== 1) continue;
 
-			// Scroll the specified region
 			if (rows > 0) {
-				// Scroll down - move content up
 				for (let row = top; row < bot - rows; row++) {
 					for (let col = left; col < right; col++) {
 						if (row + rows < this.rows && col < this.cols) {
@@ -387,7 +371,6 @@ class NeovimRenderer {
 						}
 					}
 				}
-				// Clear the bottom rows
 				for (let row = bot - rows; row < bot; row++) {
 					for (let col = left; col < right; col++) {
 						if (row < this.rows && col < this.cols) {
@@ -400,7 +383,6 @@ class NeovimRenderer {
 					}
 				}
 			} else if (rows < 0) {
-				// Scroll up - move content down
 				const absRows = Math.abs(rows);
 				for (let row = bot - 1; row >= top + absRows; row--) {
 					for (let col = left; col < right; col++) {
@@ -409,7 +391,6 @@ class NeovimRenderer {
 						}
 					}
 				}
-				// Clear the top rows
 				for (let row = top; row < top + absRows; row++) {
 					for (let col = left; col < right; col++) {
 						if (row < this.rows && col < this.cols) {
@@ -423,7 +404,6 @@ class NeovimRenderer {
 				}
 			}
 		}
-		// Don't redraw immediately - wait for flush event
 	}
 
 	handleWinViewport(eventData) {
@@ -432,9 +412,7 @@ class NeovimRenderer {
 
 			const [grid, win, topline, botline, curline, curcol] = viewportData;
 
-			// Store viewport info if needed for scrolling/rendering optimizations
 			if (grid === 1) {
-				// Main grid viewport update
 				console.log(
 					`Viewport: lines ${topline}-${botline}, cursor at ${curline},${curcol}`,
 				);
@@ -468,7 +446,6 @@ class NeovimRenderer {
 		for (const hlData of eventData) {
 			const [id, rgbAttrs, ctermAttrs, info] = hlData;
 
-			// Ensure we have valid RGB attributes
 			const attrs = rgbAttrs || {};
 
 			this.highlights.set(id, {
@@ -492,7 +469,6 @@ class NeovimRenderer {
 		if (!args || args.length === 0) return;
 		const [grid, width, height] = args[0] || args;
 		if (grid === 1) {
-			// Main grid
 			this.cols = width;
 			this.rows = height;
 			this.initGrid();
@@ -546,7 +522,6 @@ class NeovimRenderer {
 							isDoubleWidth: this.isDoubleWidth(char),
 						};
 
-						// Always advance by 1 - Neovim already handles double-width spacing
 						col++;
 					}
 				}
@@ -558,7 +533,6 @@ class NeovimRenderer {
 		if (!args || args.length === 0) return;
 		const [grid, row, col] = args[0] || args;
 		if (grid === 1) {
-			// Convert logical cursor position to visual position
 			const visualCol = this.logicalToVisualCol(row, col);
 			this.cursor = { row, col: visualCol };
 			this.redraw();
@@ -574,16 +548,14 @@ class NeovimRenderer {
 		while (currentLogicalCol < logicalCol && visualCol < this.cols) {
 			const cell = this.grid[row] && this.grid[row][visualCol];
 
-			// If no cell data, assume single-width
 			if (!cell) {
 				visualCol++;
 				currentLogicalCol++;
 				continue;
 			}
 
-			// Check if this is a double-width character
 			if (cell.isDoubleWidth) {
-				visualCol += 2; // Skip both visual columns
+				visualCol += 2;
 			} else {
 				visualCol++;
 			}
@@ -599,8 +571,6 @@ class NeovimRenderer {
 		const [fg, bg] = args[0] || args;
 		this.colors.fg = this.rgbToHex(fg);
 		this.colors.bg = this.rgbToHex(bg);
-
-		// Update canvas background immediately
 		this.clear();
 	}
 
@@ -611,13 +581,12 @@ class NeovimRenderer {
 
 	rgbToHex(rgb) {
 		if (rgb === undefined || rgb === null) {
-			return null; // Let caller handle default
+			return null;
 		}
 		if (rgb === -1) {
-			return null; // Use default color
+			return null;
 		}
 
-		// Handle negative values (Neovim sometimes sends these)
 		const value = rgb < 0 ? 0xffffff + rgb + 1 : rgb;
 		return "#" + value.toString(16).padStart(6, "0");
 	}
@@ -629,9 +598,8 @@ class NeovimRenderer {
 				const cell = this.grid[row][col];
 				if (cell) {
 					this.drawCell(row, col, cell);
-					// Skip next column if this is a double-width character
 					if (cell.isDoubleWidth) {
-						col++; // Skip the next column
+						col++;
 					}
 				}
 			}
@@ -640,19 +608,16 @@ class NeovimRenderer {
 	}
 
 	resize(width, height) {
-		// Set canvas dimensions to match container
 		this.canvas.style.width = width + "px";
 		this.canvas.style.height = height + "px";
 		this.canvas.width = width;
 		this.canvas.height = height;
 
-		// Calculate grid based on cell dimensions
 		this.cols = Math.floor(width / this.cellWidth);
 		this.rows = Math.floor(height / this.cellHeight);
 
 		this.initGrid();
 
-		// Restore font settings after canvas resize
 		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
 		this.ctx.textBaseline = "top";
 
@@ -661,7 +626,6 @@ class NeovimRenderer {
 	}
 }
 
-// Update NeovimClient class
 class NeovimClient {
 	constructor() {
 		this.ws = null;
@@ -673,7 +637,30 @@ class NeovimClient {
 		const canvas = document.getElementById("terminal");
 		if (canvas) {
 			this.renderer = new NeovimRenderer(canvas);
-			// Don't set initial size - let resizeTerminalToFullViewport handle it
+		}
+	}
+
+	showConnectionForm() {
+		const connectionForm = document.getElementById("connection-form");
+		const terminal = document.getElementById("terminal");
+
+		if (connectionForm) {
+			connectionForm.style.display = "block";
+			connectionForm.style.opacity = "1";
+		}
+
+		if (terminal) {
+			terminal.classList.remove("connected");
+			terminal.style.display = "none";
+		}
+
+		if (this.renderer) {
+			this.renderer = null;
+		}
+
+		const addressInput = document.getElementById("nvim-address");
+		if (addressInput) {
+			addressInput.focus();
 		}
 	}
 
@@ -726,8 +713,8 @@ class NeovimClient {
 		switch (msg.type) {
 			case "ready":
 				this.updateStatus("Ready to connect to Neovim");
-				this.updateTitle(); // Reset to default title
-				this.updateFavicon("default"); // Add this
+				this.updateTitle();
+				this.updateFavicon("default");
 				break;
 			case "connected":
 				this.connected = true;
@@ -738,34 +725,37 @@ class NeovimClient {
 				const addressInput = document.getElementById("nvim-address");
 				if (addressInput && addressInput.value) {
 					this.updateTitle(addressInput.value);
-					this.updateFavicon("connected"); // Add this
+					this.updateFavicon("connected");
 				}
 
-				// Hide connection form and expand terminal
 				this.hideConnectionForm();
 				this.initRenderer();
 
-				// Ensure terminal is properly sized to full viewport
 				setTimeout(() => {
 					this.resizeTerminalToFullViewport();
 					this.attachUI();
 				}, 100);
 
-				// Enable mouse support in Neovim
 				this.sendCommand("set mouse=a");
 
 				document.getElementById("terminal").focus();
+				break;
+			case "session_closed":
+				this.connected = false;
+				this.updateStatus("Neovim session closed - " + msg.data);
+				this.updateTitle();
+				this.updateFavicon("error");
+				this.showConnectionForm();
 				break;
 			case "error":
 				console.error("Error:", msg.data);
 				this.updateStatus("Error: " + msg.data);
 				this.updateTitle();
-				this.updateFavicon("error"); // Add this
+				this.updateFavicon("error");
 				break;
 			case "redraw":
 				if (this.renderer && Array.isArray(msg.data)) {
 					this.renderer.handleRedrawEvent(msg.data);
-				} else {
 				}
 				break;
 			default:
@@ -777,7 +767,6 @@ class NeovimClient {
 		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
 			this.connectToNeovim(address);
 		} else {
-			// Wait for WebSocket to be ready
 			const checkConnection = setInterval(() => {
 				if (this.ws && this.ws.readyState === WebSocket.OPEN) {
 					clearInterval(checkConnection);
@@ -785,7 +774,6 @@ class NeovimClient {
 				}
 			}, 100);
 
-			// Timeout after 5 seconds
 			setTimeout(() => {
 				clearInterval(checkConnection);
 				this.updateStatus(
@@ -822,7 +810,6 @@ class NeovimClient {
 			terminal.style.display = "block";
 		}
 
-		// Trigger resize to expand terminal to full viewport
 		this.resizeTerminalToFullViewport();
 	}
 
@@ -830,7 +817,6 @@ class NeovimClient {
 		const canvas = document.getElementById("terminal");
 		if (!canvas || !this.renderer) return;
 
-		// Use exact viewport dimensions
 		const containerWidth = window.innerWidth;
 		const containerHeight = window.innerHeight;
 
@@ -856,15 +842,17 @@ class NeovimClient {
 
 		this.ws.onclose = () => {
 			this.connected = false;
-			this.updateStatus("WebSocket disconnected");
+			this.updateStatus("WebSocket disconnected - Connection lost");
 			this.updateTitle();
-			this.updateFavicon("error"); // Add this
+			this.updateFavicon("error");
+			this.showConnectionForm();
 		};
 
 		this.ws.onerror = (error) => {
 			console.error("WebSocket error:", error);
 			this.updateStatus("WebSocket error");
-			this.updateFavicon("error"); // Add this
+			this.updateFavicon("error");
+			this.showConnectionForm();
 		};
 	}
 
@@ -880,7 +868,7 @@ class NeovimClient {
 
 		terminal.addEventListener("mousedown", (event) => {
 			if (!this.connected || !this.renderer) return;
-			terminal.focus(); // Ensure focus on mouse interaction
+			terminal.focus();
 
 			const coords = this.getMouseCoords(event);
 			this.sendMouseEvent("press", coords.row, coords.col, event.button);
@@ -908,13 +896,12 @@ class NeovimClient {
 			if (!this.connected || !this.renderer) return;
 
 			if (event.buttons > 0) {
-				// Throttle drag events to avoid overwhelming the server
 				if (!dragThrottle) {
 					dragThrottle = setTimeout(() => {
 						const coords = this.getMouseCoords(event);
 						this.sendMouseEvent("drag", coords.row, coords.col, event.button);
 						dragThrottle = null;
-					}, 16); // ~60fps
+					}, 16);
 				}
 				event.preventDefault();
 			}
@@ -986,7 +973,6 @@ class NeovimClient {
 	translateKey(event) {
 		const { key, code, ctrlKey, altKey, shiftKey, metaKey } = event;
 
-		// Handle special keys first
 		const specialKeys = {
 			Enter: "<CR>",
 			Escape: "<Esc>",
@@ -1005,19 +991,16 @@ class NeovimClient {
 			" ": "<Space>",
 		};
 
-		// Function keys
 		for (let i = 1; i <= 12; i++) {
 			specialKeys[`F${i}`] = `<F${i}>`;
 		}
 
-		// Handle modifier combinations
 		let modifiers = "";
 		if (ctrlKey) modifiers += "C-";
 		if (altKey) modifiers += "A-";
-		if (metaKey) modifiers += "D-"; // Command key on Mac
+		if (metaKey) modifiers += "D-";
 		if (shiftKey && !this.isShiftableKey(key)) modifiers += "S-";
 
-		// Handle special keys with modifiers
 		if (specialKeys[key]) {
 			if (modifiers) {
 				return `<${modifiers}${specialKeys[key].slice(1, -1)}>`;
@@ -1025,20 +1008,16 @@ class NeovimClient {
 			return specialKeys[key];
 		}
 
-		// Handle regular characters
 		if (key.length === 1) {
 			if (modifiers) {
-				// For Ctrl combinations, use lowercase
 				if (ctrlKey && !altKey && !metaKey) {
 					return `<C-${key.toLowerCase()}>`;
 				}
-				// For other modifier combinations
 				return `<${modifiers}${key}>`;
 			}
 			return key;
 		}
 
-		// Handle numeric keypad
 		if (code.startsWith("Numpad")) {
 			const numpadKeys = {
 				Numpad0: "0",
@@ -1067,7 +1046,6 @@ class NeovimClient {
 			}
 		}
 
-		// Fallback for unhandled keys
 		console.log("Unhandled key:", {
 			key,
 			code,
@@ -1141,7 +1119,6 @@ class NeovimClient {
 			const canvas = document.getElementById("terminal");
 			if (!canvas) return;
 
-			// Check if connection form is visible
 			const connectionForm = document.getElementById("connection-form");
 			const isFormVisible =
 				connectionForm && connectionForm.style.display !== "none";
@@ -1149,12 +1126,10 @@ class NeovimClient {
 			let containerWidth, containerHeight;
 
 			if (isFormVisible) {
-				// Form is visible - account for its height
 				const formHeight = connectionForm.offsetHeight + 40;
 				containerWidth = window.innerWidth;
 				containerHeight = window.innerHeight - formHeight - 40;
 			} else {
-				// Form is hidden - use full viewport
 				containerWidth = window.innerWidth;
 				containerHeight = window.innerHeight - 40;
 			}
@@ -1174,12 +1149,11 @@ class NeovimClient {
 			resizeTimeout = setTimeout(handleResize, 100);
 		});
 
-		// Initial resize
 		setTimeout(handleResize, 100);
 	}
 
 	sendResize(width, height) {
-		if (this.connected && this.ws) {
+		if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
 			this.ws.send(
 				JSON.stringify({
 					type: "resize",
@@ -1240,16 +1214,13 @@ function getUrlParameter(name) {
 }
 
 function isValidServerAddress(address) {
-	// Basic validation for host:port format
 	const pattern = /^[a-zA-Z0-9.-]+:\d+$/;
 	return pattern.test(address);
 }
 
-// Initialize client
 const client = new NeovimClient();
-window.client = client; // Make globally accessible
+window.client = client;
 
-// Setup keyboard handlers immediately
 client.setupKeyboardHandlers();
 
 window.addEventListener("load", () => {
@@ -1269,8 +1240,8 @@ window.addEventListener("load", () => {
 
 		setTimeout(() => {
 			client.updateStatus("Auto-connecting to " + serverAddress + "...");
-			client.updateTitle(serverAddress + " (connecting...)"); // Show connecting state
-			client.updateFavicon("default"); // Add this for connecting state
+			client.updateTitle(serverAddress + " (connecting...)");
+			client.updateFavicon("default");
 			client.connectToNeovim(decodeURIComponent(serverAddress));
 		}, 500);
 	}
@@ -1286,11 +1257,9 @@ terminal.addEventListener("paste", (event) => {
 	event.preventDefault();
 	const text = event.clipboardData.getData("text");
 
-	// Send pasted text character by character or as a block
 	this.sendInput(text);
 });
 
-// Make function globally accessible
 window.connectToNeovim = function () {
 	const addressInput = document.getElementById("nvim-address");
 	if (!addressInput) {
