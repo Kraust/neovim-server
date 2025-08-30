@@ -112,7 +112,7 @@ class NeovimRenderer {
 		this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 	}
 
-	isDoubleWidth(char) {
+	isWideChar(char) {
 		if (!char || char.length === 0) return false;
 
 		const code = char.codePointAt(0);
@@ -141,7 +141,6 @@ class NeovimRenderer {
 			(code >= 0x2700 && code <= 0x27bf) || // Dingbats
 			(code >= 0x1f900 && code <= 0x1f9ff) || // Supplemental Symbols
 			(code >= 0x1fa70 && code <= 0x1faff) || // Extended-A
-			// Additional ranges for symbols that should be double-width
 			(code >= 0x2e80 && code <= 0x2eff) || // CJK Radicals
 			(code >= 0x2f00 && code <= 0x2fdf) || // Kangxi Radicals
 			(code >= 0x3000 && code <= 0x303f) || // CJK Symbols
@@ -176,27 +175,29 @@ class NeovimRenderer {
 		const x = col * this.cellWidth;
 		const y = row * this.cellHeight;
 
-		// Only fill background if it's different from default
+		// Fill background for current cell
 		if (cell.bg !== this.colors.bg) {
 			this.ctx.fillStyle = cell.bg;
 			this.ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
 		}
 
-		// Handle double-width background
-		if (
-			cell.isDoubleWidth &&
-			col + 1 < this.cols &&
-			cell.bg !== this.colors.bg
-		) {
-			this.ctx.fillRect(x + this.cellWidth, y, this.cellWidth, this.cellHeight);
+		if (cell.isWideChar && col + 1 < this.cols) {
+			if (cell.bg !== this.colors.bg) {
+				this.ctx.fillStyle = cell.bg;
+				this.ctx.fillRect(
+					x + this.cellWidth,
+					y,
+					this.cellWidth,
+					this.cellHeight,
+				);
+			}
 		}
 
 		// Draw character if not empty
 		if (cell.char && cell.char !== " ") {
 			this.ctx.fillStyle = cell.fg;
 
-			if (cell.isDoubleWidth) {
-				// Minimize context state changes
+			if (cell.isWideChar) {
 				const oldAlign = this.ctx.textAlign;
 				this.ctx.textAlign = "left";
 				this.ctx.fillText(cell.char, x, y + 2);
@@ -544,7 +545,7 @@ class NeovimRenderer {
 							char: char,
 							fg: highlight.fg,
 							bg: highlight.bg,
-							isDoubleWidth: this.isDoubleWidth(char),
+							isWideChar: this.isWideChar(char),
 						};
 
 						col++;
@@ -657,11 +658,11 @@ class NeovimRenderer {
 						char: cell.char,
 						x: col * this.cellWidth,
 						y: row * this.cellHeight,
-						isDoubleWidth: cell.isDoubleWidth,
+						isWideChar: cell.isWideChar,
 					});
 				}
 
-				if (cell.isDoubleWidth) col++;
+				if (cell.isWideChar) col++;
 			}
 		}
 
@@ -677,7 +678,7 @@ class NeovimRenderer {
 		for (const [color, texts] of textBatches) {
 			this.ctx.fillStyle = color;
 			for (const text of texts) {
-				if (text.isDoubleWidth) {
+				if (text.isWideChar) {
 					const oldAlign = this.ctx.textAlign;
 					this.ctx.textAlign = "left";
 					this.ctx.fillText(text.char, text.x, text.y + 2);
