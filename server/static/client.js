@@ -304,6 +304,7 @@ class NeovimClient {
 				button: button,
 				row: row,
 				col: col,
+				immediate: true,
 			}),
 		);
 	}
@@ -317,6 +318,7 @@ class NeovimClient {
 				direction: direction,
 				row: row,
 				col: col,
+				immediate: true,
 			}),
 		);
 	}
@@ -531,6 +533,7 @@ class NeovimClient {
 					type: "resize",
 					width: width,
 					height: height,
+					immediate: true,
 				}),
 			);
 		}
@@ -558,11 +561,12 @@ class NeovimClient {
 	}
 
 	sendInput(input) {
-		if (this.connected && this.ws) {
+		if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
 			this.ws.send(
 				JSON.stringify({
 					type: "input",
 					data: input,
+					immediate: true,
 				}),
 			);
 		}
@@ -574,6 +578,7 @@ class NeovimClient {
 				JSON.stringify({
 					type: "command",
 					data: command,
+					immediate: true,
 				}),
 			);
 		}

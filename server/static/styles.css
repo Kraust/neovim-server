@@ -29,6 +29,10 @@ body {
 	border: none;
 	outline: none;
 	transition: all 0.3s ease-out;
+	transform: translateZ(0);
+	will-change: transform;
+	backface-visibility: hidden;
+	perspective: 1000;
 }
 
 #terminal.connected {

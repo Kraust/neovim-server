@@ -12,6 +12,10 @@ class NeovimRenderer {
 		this.cursor = { row: 0, col: 0 };
 		this.cursorMode = "normal";
 		this.cursorVisible = true;
+		this.renderPending = false;
+		this.lastRenderTime = 0;
+		this.targetFPS = 60;
+		this.frameInterval = 1000 / this.targetFPS;
 		this.colors = {
 			fg: "#ffffff",
 			bg: "#000000",
@@ -88,6 +92,11 @@ class NeovimRenderer {
 		this.canvas.height = this.rows * this.cellHeight;
 		this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
 		this.ctx.textBaseline = "top";
+
+		// Add performance optimizations
+		this.ctx.imageSmoothingEnabled = false; // Disable antialiasing for text
+		this.ctx.textRenderingOptimization = "optimizeSpeed";
+
 		this.clear();
 	}
 
@@ -305,7 +314,7 @@ class NeovimRenderer {
 				this.handleDefaultColors(eventData);
 				break;
 			case "flush":
-				this.redraw();
+				this.requestRedraw();
 				break;
 			case "hl_attr_define":
 				this.handleHlAttrDefine(eventData);
@@ -589,6 +598,33 @@ class NeovimRenderer {
 
 		const value = rgb < 0 ? 0xffffff + rgb + 1 : rgb;
 		return "#" + value.toString(16).padStart(6, "0");
+	}
+
+	requestRedraw() {
+		if (this.renderPending) return;
+
+		const now = performance.now();
+		const timeSinceLastRender = now - this.lastRenderTime;
+
+		if (timeSinceLastRender >= this.frameInterval) {
+			// Render immediately if enough time has passed
+			this.renderPending = true;
+			requestAnimationFrame(() => {
+				this.redraw();
+				this.lastRenderTime = performance.now();
+				this.renderPending = false;
+			});
+		} else {
+			// Schedule render for later
+			this.renderPending = true;
+			setTimeout(() => {
+				requestAnimationFrame(() => {
+					this.redraw();
+					this.lastRenderTime = performance.now();
+					this.renderPending = false;
+				});
+			}, this.frameInterval - timeSinceLastRender);
+		}
 	}
 
 	redraw() {
