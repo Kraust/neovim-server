@@ -560,30 +560,10 @@ class NeovimRenderer {
 	}
 
 	logicalToVisualCol(row, logicalCol) {
-		if (row >= this.rows || row < 0) return logicalCol;
+		if (row >= this.rows || row < 0) return 0;
+		if (logicalCol < 0) return 0;
 
-		let visualCol = 0;
-		let currentLogicalCol = 0;
-
-		while (currentLogicalCol < logicalCol && visualCol < this.cols) {
-			const cell = this.grid[row] && this.grid[row][visualCol];
-
-			if (!cell) {
-				visualCol++;
-				currentLogicalCol++;
-				continue;
-			}
-
-			if (cell.isDoubleWidth) {
-				visualCol += 2;
-			} else {
-				visualCol++;
-			}
-
-			currentLogicalCol++;
-		}
-
-		return Math.min(visualCol, this.cols - 1);
+		return Math.min(logicalCol, this.cols - 1);
 	}
 
 	handleDefaultColors(args) {
