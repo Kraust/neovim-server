@@ -1,4 +1,4 @@
-# neovim-server
+# nvim-server
 
 ## Introduction
 

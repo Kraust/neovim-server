@@ -99,8 +99,6 @@ func (ctx *Server) broadcastToClients(message map[string]interface{}) {
 }
 
 func (s *Server) handleClientMessage(session *ClientSession, msg map[string]interface{}) {
-	log.Printf("Received message from client: %v", msg)
-
 	switch msg["type"] {
 	case "connect":
 		address, ok := msg["address"].(string)
@@ -141,7 +139,6 @@ func (s *Server) handleClientMessage(session *ClientSession, msg map[string]inte
 }
 
 func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]interface{}) {
-	log.Printf("Received message: %v", msg)
 	switch msg["type"] {
 	case "attach_ui":
 		width := int(msg["width"].(float64))
@@ -153,8 +150,6 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]in
 		}
 		if err := session.nvim.AttachUI(width, height, options); err != nil {
 			log.Printf("Error attaching UI: %v", err)
-		} else {
-			log.Printf("UI attached successfully with dimensions %dx%d", width, height)
 		}
 	case "input":
 		// Forward keyboard input to Neovim
@@ -165,7 +160,6 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]in
 	case "command":
 		// Execute Neovim command
 		cmd := msg["data"].(string)
-		log.Printf("Executing command: %s", cmd)
 
 		// Check if this is a UI attach command
 		if strings.Contains(cmd, "nvim_ui_attach") {
@@ -176,8 +170,6 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]in
 				"rgb":           true,
 			}); err != nil {
 				log.Printf("Error attaching UI: %v", err)
-			} else {
-				log.Printf("UI attached successfully")
 			}
 		} else if strings.HasPrefix(cmd, "lua ") {
 			// Handle other Lua commands
@@ -276,8 +268,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 	}()
 
-	log.Printf("Client connected. Total clients: %d", len(s.clients))
-
 	// Send connection ready message
 	conn.WriteJSON(map[string]interface{}{
 		"type": "ready",
@@ -300,12 +290,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (s *Server) connectSessionToNeovim(session *ClientSession, address string) error {
 	// Close existing connection if any
 	if session.nvim != nil {
-		log.Printf("Closing existing Neovim connection for client")
 		session.nvim.Close()
 		session.nvim = nil
 	}
 
-	log.Printf("Dialing Neovim at address: %s", address)
 	client, err := nvim.Dial(address)
 	if err != nil {
 		return fmt.Errorf("failed to dial %s: %w", address, err)

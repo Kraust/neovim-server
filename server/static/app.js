@@ -648,16 +648,66 @@ class NeovimClient {
 		}
 	}
 
+	updateTitle(serverAddress = null, status = null) {
+		let title = "Neovim Server";
+
+		if (serverAddress) {
+			title += ` - ${serverAddress}`;
+		}
+
+		if (status) {
+			title += ` (${status})`;
+		}
+
+		document.title = title;
+	}
+
+	updateFavicon(status = "default") {
+		const link =
+			document.querySelector("link[rel*='icon']") ||
+			document.createElement("link");
+		link.type = "image/x-icon";
+		link.rel = "shortcut icon";
+
+		switch (status) {
+			case "connected":
+				link.href =
+					'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg`" viewBox="0 0 100 100"><text y=".9em" font-size="90">✅</text></svg>';
+				break;
+			case "connecting":
+				link.href =
+					'data:image/svg+xml,<svg xmlns="`http://www.w3.org/2000/svg`" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔄</text></svg>';
+				break;
+			case "error":
+				link.href =
+					'data:image/svg+xml,<svg xmlns="`http://www.w3.org/2000/svg`" viewBox="0 0 100 100"><text y=".9em" font-size="90">❌</text></svg>';
+				break;
+			default:
+				link.href =
+					'data:image/svg+xml,<svg xmlns="`http://www.w3.org/2000/svg`" viewBox="0 0 100 100"><text y=".9em" font-size="90">📝</text></svg>';
+		}
+
+		document.getElementsByTagName("head")[0].appendChild(link);
+	}
+
 	handleMessage(msg) {
 		switch (msg.type) {
 			case "ready":
 				this.updateStatus("Ready to connect to Neovim");
+				this.updateTitle(); // Reset to default title
+				this.updateFavicon("default"); // Add this
 				break;
 			case "connected":
 				this.connected = true;
 				this.updateStatus(
 					"Connected to Neovim successfully! Initializing UI...",
 				);
+
+				const addressInput = document.getElementById("nvim-address");
+				if (addressInput && addressInput.value) {
+					this.updateTitle(addressInput.value);
+					this.updateFavicon("connected"); // Add this
+				}
 
 				// Hide connection form and expand terminal
 				this.hideConnectionForm();
@@ -677,6 +727,8 @@ class NeovimClient {
 			case "error":
 				console.error("Error:", msg.data);
 				this.updateStatus("Error: " + msg.data);
+				this.updateTitle();
+				this.updateFavicon("error"); // Add this
 				break;
 			case "redraw":
 				if (this.renderer && Array.isArray(msg.data)) {
@@ -686,6 +738,28 @@ class NeovimClient {
 				break;
 			default:
 				console.log("Unknown message type:", msg.type);
+		}
+	}
+
+	autoConnect(address) {
+		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+			this.connectToNeovim(address);
+		} else {
+			// Wait for WebSocket to be ready
+			const checkConnection = setInterval(() => {
+				if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+					clearInterval(checkConnection);
+					this.connectToNeovim(address);
+				}
+			}, 100);
+
+			// Timeout after 5 seconds
+			setTimeout(() => {
+				clearInterval(checkConnection);
+				this.updateStatus(
+					"Failed to establish WebSocket connection for auto-connect",
+				);
+			}, 5000);
 		}
 	}
 
@@ -751,11 +825,14 @@ class NeovimClient {
 		this.ws.onclose = () => {
 			this.connected = false;
 			this.updateStatus("WebSocket disconnected");
+			this.updateTitle();
+			this.updateFavicon("error"); // Add this
 		};
 
 		this.ws.onerror = (error) => {
 			console.error("WebSocket error:", error);
 			this.updateStatus("WebSocket error");
+			this.updateFavicon("error"); // Add this
 		};
 	}
 
@@ -1125,6 +1202,17 @@ class NeovimClient {
 	}
 }
 
+function getUrlParameter(name) {
+	const urlParams = new URLSearchParams(window.location.search);
+	return urlParams.get(name);
+}
+
+function isValidServerAddress(address) {
+	// Basic validation for host:port format
+	const pattern = /^[a-zA-Z0-9.-]+:\d+$/;
+	return pattern.test(address);
+}
+
 // Initialize client
 const client = new NeovimClient();
 window.client = client; // Make globally accessible
@@ -1132,9 +1220,28 @@ window.client = client; // Make globally accessible
 // Setup keyboard handlers immediately
 client.setupKeyboardHandlers();
 
-// Connect when page loads
 window.addEventListener("load", () => {
 	client.connect();
+
+	const serverAddress = getUrlParameter("server");
+	if (serverAddress && isValidServerAddress(serverAddress)) {
+		const connectionForm = document.getElementById("connection-form");
+		if (connectionForm) {
+			connectionForm.style.opacity = "0.5";
+		}
+
+		const addressInput = document.getElementById("nvim-address");
+		if (addressInput) {
+			addressInput.value = decodeURIComponent(serverAddress);
+		}
+
+		setTimeout(() => {
+			client.updateStatus("Auto-connecting to " + serverAddress + "...");
+			client.updateTitle(serverAddress + " (connecting...)"); // Show connecting state
+			client.updateFavicon("default"); // Add this for connecting state
+			client.connectToNeovim(decodeURIComponent(serverAddress));
+		}, 500);
+	}
 });
 
 terminal.addEventListener("keyup", (event) => {
