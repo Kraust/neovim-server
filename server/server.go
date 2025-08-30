@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 )
 
 //go:embed static/*
@@ -323,15 +322,6 @@ func (ctx *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		ctx.handleClientMessage(session, msg)
 	}
-}
-
-func (ctx *Server) detectConnectionLatency(session *ClientSession) time.Duration {
-	start := time.Now()
-	var result bool
-	if err := session.nvim.ExecLua("return true", &result); err != nil {
-		return time.Second
-	}
-	return time.Since(start)
 }
 
 func (ctx *Server) connectSessionToNeovim(session *ClientSession, address string) error {
