@@ -171,43 +171,6 @@ class NeovimRenderer {
 		);
 	}
 
-	drawCell(row, col, cell) {
-		const x = col * this.cellWidth;
-		const y = row * this.cellHeight;
-
-		// Fill background for current cell
-		if (cell.bg !== this.colors.bg) {
-			this.ctx.fillStyle = cell.bg;
-			this.ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
-		}
-
-		if (cell.isWideChar && col + 1 < this.cols) {
-			if (cell.bg !== this.colors.bg) {
-				this.ctx.fillStyle = cell.bg;
-				this.ctx.fillRect(
-					x + this.cellWidth,
-					y,
-					this.cellWidth,
-					this.cellHeight,
-				);
-			}
-		}
-
-		// Draw character if not empty
-		if (cell.char && cell.char !== " ") {
-			this.ctx.fillStyle = cell.fg;
-
-			if (cell.isWideChar) {
-				const oldAlign = this.ctx.textAlign;
-				this.ctx.textAlign = "left";
-				this.ctx.fillText(cell.char, x, y + 2);
-				this.ctx.textAlign = oldAlign;
-			} else {
-				this.ctx.fillText(cell.char, x, y + 2);
-			}
-		}
-	}
-
 	drawCursor() {
 		if (!this.cursorVisible) return;
 
@@ -629,17 +592,13 @@ class NeovimRenderer {
 	redraw() {
 		this.clear();
 
-		// Batch operations by color to reduce context switches
 		const backgroundBatches = new Map();
 		const textBatches = new Map();
-
-		// Collect all operations first
 		for (let row = 0; row < this.rows; row++) {
 			for (let col = 0; col < this.cols; col++) {
 				const cell = this.grid[row][col];
 				if (!cell) continue;
 
-				// Group background fills
 				if (cell.bg !== this.colors.bg) {
 					if (!backgroundBatches.has(cell.bg)) {
 						backgroundBatches.set(cell.bg, []);
@@ -647,6 +606,13 @@ class NeovimRenderer {
 					backgroundBatches
 						.get(cell.bg)
 						.push({ x: col * this.cellWidth, y: row * this.cellHeight });
+
+					if (cell.isWideChar && col + 1 < this.cols) {
+						backgroundBatches.get(cell.bg).push({
+							x: (col + 1) * this.cellWidth,
+							y: row * this.cellHeight,
+						});
+					}
 				}
 
 				// Group text draws
@@ -666,7 +632,6 @@ class NeovimRenderer {
 			}
 		}
 
-		// Execute batched background fills
 		for (const [color, rects] of backgroundBatches) {
 			this.ctx.fillStyle = color;
 			for (const rect of rects) {
@@ -674,7 +639,6 @@ class NeovimRenderer {
 			}
 		}
 
-		// Execute batched text draws
 		for (const [color, texts] of textBatches) {
 			this.ctx.fillStyle = color;
 			for (const text of texts) {
