@@ -22,7 +22,7 @@ body {
 #terminal {
 	flex: 1;
 	background: #000;
-	display: none; /* Hidden initially */
+	display: none;
 	cursor: text;
 	margin: 0;
 	padding: 0;

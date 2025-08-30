@@ -102,17 +102,6 @@ func (s *Server) sendToClient(session *ClientSession, message map[string]any) {
 	}
 }
 
-func (ctx *Server) broadcastToClients(message map[string]any) {
-	for client := range ctx.clients {
-		err := client.WriteJSON(message)
-		if err != nil {
-			log.Printf("Write error: %v", err)
-			client.Close()
-			delete(ctx.clients, client)
-		}
-	}
-}
-
 func (s *Server) handleClientMessage(session *ClientSession, msg map[string]any) {
 	switch msg["type"] {
 	case "connect":
@@ -384,5 +373,5 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(fmt.Sprintf(`{"status": "running", "total_clients": %d, "active_clients": %d}`, totalClients, activeClients)))
+	fmt.Fprintf(w, `{"status": "running", "total_clients": %d, "active_clients": %d}`, totalClients, activeClients)
 }
