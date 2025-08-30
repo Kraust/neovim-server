@@ -129,17 +129,13 @@ func (ctx *Server) handleClientMessage(session *ClientSession, msg map[string]an
 			"data": "Successfully connected to Neovim",
 		})
 	case "clipboard_content":
-		log.Printf("in clipboard_content")
 		if !session.active || session.nvim == nil {
-			log.Printf("clipboard_content not active")
 			return
 		}
 
 		err := session.nvim.SetVar("nvim_server_clipboard", msg["data"])
 		if err != nil {
 			log.Printf("Failed to set clipboard variable: %v", err)
-		} else {
-			log.Printf("Set clipboard variable successfully")
 		}
 	default:
 		// Only handle other messages if this session has Neovim connected
@@ -186,7 +182,6 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]an
 			}
 		} else {
 			session.uiAttached = true
-			log.Printf("UI attached successfully for client")
 		}
 	case "input":
 		// Forward keyboard input to Neovim
@@ -238,7 +233,6 @@ func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]an
 			log.Printf("Error resizing UI: %v", err)
 			if strings.Contains(err.Error(), "UI not attached") {
 				session.uiAttached = false
-				log.Printf("UI detached, ignoring future resize requests until reattached")
 			} else if strings.Contains(err.Error(), "session closed") {
 				session.active = false
 				session.uiAttached = false
@@ -370,7 +364,7 @@ func (ctx *Server) connectSessionToNeovim(session *ClientSession, address string
 	session.nvim = client
 	session.address = address
 	session.active = true
-	log.Printf("Successfully connected client to Neovim at %s", address)
+	log.Printf("Successfully connected client to neovim at %s", address)
 
 	// Set up clipboard IMMEDIATELY after connection, before any UI operations
 	if err := ctx.setupSimpleClipboard(session); err != nil {
@@ -480,7 +474,6 @@ return true
 		})
 	})
 
-	log.Printf("Clipboard provider setup completed")
 	return nil
 }
 

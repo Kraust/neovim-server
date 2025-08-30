@@ -616,7 +616,6 @@ class NeovimClient {
 		try {
 			await navigator.clipboard.writeText(text);
 			this.lastClipboardContent = text;
-			console.log("Synced to system clipboard:", text.length, "characters");
 		} catch (err) {
 			console.error("Failed to sync clipboard:", err);
 		}
@@ -624,12 +623,10 @@ class NeovimClient {
 
 	async sendClipboardToNeovim() {
 		if (!this.clipboardEnabled) {
-			console.log("Clipboard not enabled");
 			return;
 		}
 		try {
 			const text = await navigator.clipboard.readText();
-			console.log("Sending clipboard to Neovim:", text.length, "characters");
 			if (this.connected && this.ws) {
 				this.ws.send(
 					JSON.stringify({
