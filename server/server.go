@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 //go:embed static/*
@@ -127,6 +128,19 @@ func (ctx *Server) handleClientMessage(session *ClientSession, msg map[string]an
 			"type": "connected",
 			"data": "Successfully connected to Neovim",
 		})
+	case "clipboard_content":
+		log.Printf("in clipboard_content")
+		if !session.active || session.nvim == nil {
+			log.Printf("clipboard_content not active")
+			return
+		}
+
+		err := session.nvim.SetVar("nvim_server_clipboard", msg["data"])
+		if err != nil {
+			log.Printf("Failed to set clipboard variable: %v", err)
+		} else {
+			log.Printf("Set clipboard variable successfully")
+		}
 	default:
 		// Only handle other messages if this session has Neovim connected
 		if !session.active || session.nvim == nil {
@@ -333,8 +347,16 @@ func (ctx *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (ctx *Server) detectConnectionLatency(session *ClientSession) time.Duration {
+	start := time.Now()
+	var result bool
+	if err := session.nvim.ExecLua("return true", &result); err != nil {
+		return time.Second // Default to high latency
+	}
+	return time.Since(start)
+}
+
 func (ctx *Server) connectSessionToNeovim(session *ClientSession, address string) error {
-	// Close existing connection if any
 	if session.nvim != nil {
 		session.nvim.Close()
 		session.nvim = nil
@@ -350,13 +372,115 @@ func (ctx *Server) connectSessionToNeovim(session *ClientSession, address string
 	session.active = true
 	log.Printf("Successfully connected client to Neovim at %s", address)
 
-	// Start event listener for this session
+	// Set up clipboard IMMEDIATELY after connection, before any UI operations
+	if err := ctx.setupSimpleClipboard(session); err != nil {
+		log.Printf("Failed to setup clipboard: %v", err)
+	}
+
+	// Start event listener
 	go func() {
 		if err := ctx.listenToNeovimEvents(session); err != nil {
-			log.Printf("Error in Neovim event listener for client: %v", err)
+			log.Printf("Error in Neovim event listener: %v", err)
 		}
 	}()
 
+	return nil
+}
+
+func (ctx *Server) setupSimpleClipboard(session *ClientSession) error {
+	channelID := session.nvim.ChannelID()
+
+	// Set up clipboard provider
+	clipboardConfig := fmt.Sprintf(`
+vim.g.clipboard = {
+  name = 'nvim-server',
+  copy = {
+    ['+'] = function(lines, regtype)
+      local content = table.concat(lines, '\n')
+      vim.rpcnotify(%d, 'clipboard_copy', content)
+      return 0
+    end,
+    ['*'] = function(lines, regtype)
+      local content = table.concat(lines, '\n')
+      vim.rpcnotify(%d, 'clipboard_copy', content)
+      return 0
+    end,
+  },
+  paste = {
+	['+'] = function()
+	  vim.g.nvim_server_clipboard = nil
+	  vim.rpcnotify(%d, 'clipboard_paste')
+	  
+	  -- Longer timeout for network latency
+	  local timeout = 300  -- 3 seconds
+	  while timeout > 0 and vim.g.nvim_server_clipboard == nil do
+		vim.wait(10)
+		timeout = timeout - 1
+	  end
+	  
+	  local content = vim.g.nvim_server_clipboard
+	  if content == nil or content == '' then
+		print('Clipboard paste timeout or empty')
+		return {''}
+	  end
+	  
+	  return vim.split(content, '\n', { plain = true })
+	end,
+	['*'] = function()
+	  vim.g.nvim_server_clipboard = nil
+	  vim.rpcnotify(%d, 'clipboard_paste')
+	  
+	  local timeout = 300
+	  while timeout > 0 and vim.g.nvim_server_clipboard == nil do
+		vim.wait(10)
+		timeout = timeout - 1
+	  end
+	  
+	  local content = vim.g.nvim_server_clipboard
+	  if content == nil or content == '' then
+		return {''}
+	  end
+	  
+	  return vim.split(content, '\n', { plain = true })
+	end,
+  }
+}
+return true
+`, channelID, channelID, channelID, channelID)
+
+	var result bool
+	if err := session.nvim.ExecLua(clipboardConfig, &result); err != nil {
+		return err
+	}
+
+	// Force reload clipboard provider
+	reloadConfig := `
+vim.g.loaded_clipboard_provider = nil
+vim.cmd('runtime autoload/provider/clipboard.vim')
+vim.opt.clipboard = 'unnamedplus'
+return true
+`
+
+	var reloadResult bool
+	if err := session.nvim.ExecLua(reloadConfig, &reloadResult); err != nil {
+		return err
+	}
+
+	// Register message handlers
+	session.nvim.RegisterHandler("clipboard_copy", func(content string) {
+		ctx.sendToClient(session, map[string]any{
+			"type": "clipboard_set",
+			"data": content,
+		})
+	})
+
+	session.nvim.RegisterHandler("clipboard_paste", func() {
+		ctx.sendToClient(session, map[string]any{
+			"type": "clipboard_get",
+		})
+	})
+
+	log.Printf("Clipboard provider setup completed")
 	return nil
 }
 

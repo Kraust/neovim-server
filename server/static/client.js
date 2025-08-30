@@ -3,6 +3,9 @@ class NeovimClient {
 		this.ws = null;
 		this.connected = false;
 		this.renderer = null;
+		this.clipboardEnabled = navigator.clipboard && window.isSecureContext;
+		this.lastClipboardContent = "";
+		this.requestClipboardPermission();
 	}
 
 	initRenderer() {
@@ -130,6 +133,14 @@ class NeovimClient {
 					this.renderer.handleRedrawEvent(msg.data);
 				}
 				break;
+			case "clipboard_set":
+				if (this.clipboardEnabled && msg.data) {
+					this.syncToSystemClipboard(msg.data);
+				}
+				break;
+			case "clipboard_get":
+				this.sendClipboardToNeovim();
+				break;
 			default:
 				console.log("Unknown message type:", msg.type);
 		}
@@ -236,6 +247,20 @@ class NeovimClient {
 
 		terminal.addEventListener("click", () => {
 			terminal.focus();
+		});
+
+		// Enhance the focus handler to always sync clipboard
+		terminal.addEventListener("focus", () => {
+			if (this.connected && this.clipboardEnabled) {
+				this.sendClipboardToNeovim();
+			}
+		});
+
+		// Also sync on window focus
+		window.addEventListener("focus", () => {
+			if (this.connected && this.clipboardEnabled) {
+				this.sendClipboardToNeovim();
+			}
 		});
 
 		terminal.addEventListener("mousedown", (event) => {
@@ -582,6 +607,72 @@ class NeovimClient {
 				}),
 			);
 		}
+	}
+
+	async syncToSystemClipboard(text) {
+		if (!this.clipboardEnabled || text === this.lastClipboardContent) {
+			return;
+		}
+		try {
+			await navigator.clipboard.writeText(text);
+			this.lastClipboardContent = text;
+			console.log("Synced to system clipboard:", text.length, "characters");
+		} catch (err) {
+			console.error("Failed to sync clipboard:", err);
+		}
+	}
+
+	async sendClipboardToNeovim() {
+		if (!this.clipboardEnabled) {
+			console.log("Clipboard not enabled");
+			return;
+		}
+		try {
+			const text = await navigator.clipboard.readText();
+			console.log("Sending clipboard to Neovim:", text.length, "characters");
+			if (this.connected && this.ws) {
+				this.ws.send(
+					JSON.stringify({
+						type: "clipboard_content",
+						data: text,
+					}),
+				);
+			}
+		} catch (err) {
+			console.error("Failed to read clipboard:", err);
+			// Send empty content on error
+			if (this.connected && this.ws) {
+				this.ws.send(
+					JSON.stringify({
+						type: "clipboard_content",
+						data: "",
+					}),
+				);
+			}
+		}
+	}
+
+	async requestClipboardPermission() {
+		if (!navigator.clipboard || !window.isSecureContext) {
+			console.warn("Clipboard API not available (requires HTTPS)");
+			return false;
+		}
+		try {
+			const permission = await navigator.permissions.query({
+				name: "clipboard-read",
+			});
+			if (permission.state === "granted") {
+				this.clipboardEnabled = true;
+				return true;
+			} else if (permission.state === "prompt") {
+				await navigator.clipboard.readText();
+				this.clipboardEnabled = true;
+				return true;
+			}
+		} catch (err) {
+			this.clipboardEnabled = false;
+		}
+		return false;
 	}
 }
 
