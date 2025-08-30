@@ -692,31 +692,34 @@ class NeovimClient {
 	}
 
 	updateFavicon(status = "default") {
-		const link =
-			document.querySelector("link[rel*='icon']") ||
-			document.createElement("link");
-		link.type = "image/x-icon";
-		link.rel = "shortcut icon";
-
-		switch (status) {
-			case "connected":
-				link.href =
-					'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg`" viewBox="0 0 100 100"><text y=".9em" font-size="90">✅</text></svg>';
-				break;
-			case "connecting":
-				link.href =
-					'data:image/svg+xml,<svg xmlns="`http://www.w3.org/2000/svg`" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔄</text></svg>';
-				break;
-			case "error":
-				link.href =
-					'data:image/svg+xml,<svg xmlns="`http://www.w3.org/2000/svg`" viewBox="0 0 100 100"><text y=".9em" font-size="90">❌</text></svg>';
-				break;
-			default:
-				link.href =
-					'data:image/svg+xml,<svg xmlns="`http://www.w3.org/2000/svg`" viewBox="0 0 100 100"><text y=".9em" font-size="90">📝</text></svg>';
+		let link = document.querySelector("link[rel*='icon']");
+		if (!link) {
+			link = document.createElement("link");
+			link.type = "image/x-icon";
+			link.rel = "shortcut icon";
+			document.head.appendChild(link);
 		}
 
-		document.getElementsByTagName("head")[0].appendChild(link);
+		let svgContent;
+		switch (status) {
+			case "connected":
+				svgContent =
+					'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">✅</text></svg>';
+				break;
+			case "connecting":
+				svgContent =
+					'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔄</text></svg>';
+				break;
+			case "error":
+				svgContent =
+					'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">❌</text></svg>';
+				break;
+			default:
+				svgContent =
+					'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📝</text></svg>';
+		}
+
+		link.href = "data:image/svg+xml," + encodeURIComponent(svgContent);
 	}
 
 	handleMessage(msg) {
