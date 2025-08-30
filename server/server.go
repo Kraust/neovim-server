@@ -9,15 +9,23 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 //go:embed static/*
 var staticFiles embed.FS
 
+type ClientSession struct {
+	nvim    *nvim.Nvim
+	conn    *websocket.Conn
+	address string
+	active  bool
+}
+
 type Server struct {
-	nvim     *nvim.Nvim
 	upgrader websocket.Upgrader
-	clients  map[*websocket.Conn]bool
+	clients  map[*websocket.Conn]*ClientSession
+	mu       sync.RWMutex
 }
 
 func Serve(address string) error {
@@ -25,7 +33,7 @@ func Serve(address string) error {
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
-		clients: make(map[*websocket.Conn]bool),
+		clients: make(map[*websocket.Conn]*ClientSession),
 	}
 
 	// Serve embedded static files
@@ -48,31 +56,35 @@ func Serve(address string) error {
 	return nil
 }
 
-func (ctx *Server) connectToNeovimWithAddress(address string) error {
-	// Close existing connection if any
-	if ctx.nvim != nil {
-		log.Printf("Closing existing Neovim connection")
-		ctx.nvim.Close()
-		ctx.nvim = nil
-	}
-
-	log.Printf("Dialing Neovim at address: %s", address)
-	// Connect to Neovim instance at specified address
-	client, err := nvim.Dial(address)
-	if err != nil {
-		return fmt.Errorf("failed to dial %s: %w", address, err)
-	}
-	ctx.nvim = client
-	log.Printf("Successfully dialed Neovim")
-
-	// Start event listener in a separate goroutine to avoid blocking
-	go func() {
-		if err := ctx.listenToNeovimEvents(); err != nil {
-			log.Printf("Error in Neovim event listener: %v", err)
+func (s *Server) listenToNeovimEvents(session *ClientSession) error {
+	// Register handler for UI events - specific to this session
+	session.nvim.RegisterHandler("redraw", func(updates ...[]interface{}) {
+		// Send redraw events only to this client
+		for _, update := range updates {
+			message := map[string]interface{}{
+				"type": "redraw",
+				"data": update,
+			}
+			s.sendToClient(session, message)
 		}
-	}()
+	})
 
-	return nil
+	// Subscribe to UI events
+	if err := session.nvim.Subscribe("redraw"); err != nil {
+		return fmt.Errorf("failed to subscribe to redraw events: %w", err)
+	}
+
+	// Serve the event loop (this blocks)
+	return session.nvim.Serve()
+}
+
+func (s *Server) sendToClient(session *ClientSession, message map[string]interface{}) {
+	err := session.conn.WriteJSON(message)
+	if err != nil {
+		log.Printf("Write error to client: %v", err)
+		session.conn.Close()
+		// Session cleanup will be handled by defer in handleWebSocket
+	}
 }
 
 func (ctx *Server) broadcastToClients(message map[string]interface{}) {
@@ -86,29 +98,49 @@ func (ctx *Server) broadcastToClients(message map[string]interface{}) {
 	}
 }
 
-func (ctx *Server) listenToNeovimEvents() error {
-	// Register handler for UI events
-	ctx.nvim.RegisterHandler("redraw", func(updates ...[]interface{}) {
-		// Broadcast redraw events to all connected clients
-		for _, update := range updates {
-			message := map[string]interface{}{
-				"type": "redraw",
-				"data": update,
-			}
-			ctx.broadcastToClients(message)
+func (s *Server) handleClientMessage(session *ClientSession, msg map[string]interface{}) {
+	log.Printf("Received message from client: %v", msg)
+
+	switch msg["type"] {
+	case "connect":
+		address, ok := msg["address"].(string)
+		if !ok {
+			s.sendToClient(session, map[string]interface{}{
+				"type": "error",
+				"data": "Invalid server address",
+			})
+			return
 		}
-	})
 
-	// Subscribe to UI events
-	if err := ctx.nvim.Subscribe("redraw"); err != nil {
-		return fmt.Errorf("failed to subscribe to redraw events: %w", err)
+		if err := s.connectSessionToNeovim(session, address); err != nil {
+			log.Printf("Failed to connect client to Neovim at %s: %v", address, err)
+			s.sendToClient(session, map[string]interface{}{
+				"type": "error",
+				"data": fmt.Sprintf("Failed to connect to Neovim: %v", err),
+			})
+			return
+		}
+
+		s.sendToClient(session, map[string]interface{}{
+			"type": "connected",
+			"data": "Successfully connected to Neovim",
+		})
+
+	default:
+		// Only handle other messages if this session has Neovim connected
+		if !session.active || session.nvim == nil {
+			s.sendToClient(session, map[string]interface{}{
+				"type": "error",
+				"data": "Not connected to Neovim",
+			})
+			return
+		}
+
+		s.handleNeovimCommand(session, msg)
 	}
-
-	// Serve the event loop (this blocks)
-	return ctx.nvim.Serve()
 }
 
-func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
+func (ctx *Server) handleNeovimCommand(session *ClientSession, msg map[string]interface{}) {
 	log.Printf("Received message: %v", msg)
 	switch msg["type"] {
 	case "attach_ui":
@@ -119,7 +151,7 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 			"ext_multigrid": false,
 			"rgb":           true,
 		}
-		if err := ctx.nvim.AttachUI(width, height, options); err != nil {
+		if err := session.nvim.AttachUI(width, height, options); err != nil {
 			log.Printf("Error attaching UI: %v", err)
 		} else {
 			log.Printf("UI attached successfully with dimensions %dx%d", width, height)
@@ -127,7 +159,7 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 	case "input":
 		// Forward keyboard input to Neovim
 		input := msg["data"].(string)
-		if _, err := ctx.nvim.Input(input); err != nil {
+		if _, err := session.nvim.Input(input); err != nil {
 			log.Printf("Error sending input: %v", err)
 		}
 	case "command":
@@ -138,7 +170,7 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 		// Check if this is a UI attach command
 		if strings.Contains(cmd, "nvim_ui_attach") {
 			// Extract dimensions and call AttachUI directly
-			if err := ctx.nvim.AttachUI(80, 24, map[string]interface{}{
+			if err := session.nvim.AttachUI(80, 24, map[string]interface{}{
 				"ext_linegrid":  true,
 				"ext_multigrid": false,
 				"rgb":           true,
@@ -150,12 +182,12 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 		} else if strings.HasPrefix(cmd, "lua ") {
 			// Handle other Lua commands
 			luaCode := strings.TrimPrefix(cmd, "lua ")
-			if err := ctx.nvim.ExecLua(luaCode, nil); err != nil {
+			if err := session.nvim.ExecLua(luaCode, nil); err != nil {
 				log.Printf("Error executing Lua: %v", err)
 			}
 		} else {
 			// Handle regular commands
-			if err := ctx.nvim.Command(cmd); err != nil {
+			if err := session.nvim.Command(cmd); err != nil {
 				log.Printf("Error executing command: %v", err)
 			}
 		}
@@ -163,7 +195,7 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 		// Handle terminal resize
 		width := int(msg["width"].(float64))
 		height := int(msg["height"].(float64))
-		if err := ctx.nvim.TryResizeUI(width, height); err != nil {
+		if err := session.nvim.TryResizeUI(width, height); err != nil {
 			log.Printf("Error resizing UI: %v", err)
 		}
 	case "mouse":
@@ -193,7 +225,7 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 		}
 
 		if input != "" {
-			if _, err := ctx.nvim.Input(input); err != nil {
+			if _, err := session.nvim.Input(input); err != nil {
 				log.Printf("Error sending mouse input: %v", err)
 			}
 		}
@@ -209,7 +241,7 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 			input = fmt.Sprintf("<ScrollWheelDown><%d,%d>", col, row)
 		}
 
-		if _, err := ctx.nvim.Input(input); err != nil {
+		if _, err := session.nvim.Input(input); err != nil {
 			log.Printf("Error sending scroll input: %v", err)
 		}
 
@@ -217,18 +249,34 @@ func (ctx *Server) handleClientMessage(msg map[string]interface{}) {
 
 }
 
-func (ctx *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := ctx.upgrader.Upgrade(w, r, nil)
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
 	}
 	defer conn.Close()
 
-	ctx.clients[conn] = true
-	defer delete(ctx.clients, conn)
+	// Create new client session
+	session := &ClientSession{
+		conn:   conn,
+		active: false,
+	}
 
-	log.Printf("Client connected. Total clients: %d", len(ctx.clients))
+	s.mu.Lock()
+	s.clients[conn] = session
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		if session.nvim != nil {
+			session.nvim.Close()
+		}
+		delete(s.clients, conn)
+		s.mu.Unlock()
+	}()
+
+	log.Printf("Client connected. Total clients: %d", len(s.clients))
 
 	// Send connection ready message
 	conn.WriteJSON(map[string]interface{}{
@@ -245,48 +293,50 @@ func (ctx *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		// Handle connect message with server address
-		if msg["type"] == "connect" {
-			address, ok := msg["address"].(string)
-			if !ok {
-				conn.WriteJSON(map[string]interface{}{
-					"type": "error",
-					"data": "Invalid server address",
-				})
-				continue
-			}
-
-			if err := ctx.connectToNeovimWithAddress(address); err != nil {
-				log.Printf("Failed to connect to Neovim at %s: %v", address, err)
-				conn.WriteJSON(map[string]interface{}{
-					"type": "error",
-					"data": fmt.Sprintf("Failed to connect to Neovim: %v", err),
-				})
-				continue
-			}
-
-			conn.WriteJSON(map[string]interface{}{
-				"type": "connected",
-				"data": "Successfully connected to Neovim",
-			})
-			continue
-		}
-
-		// Only handle other messages if Neovim is connected
-		if ctx.nvim == nil {
-			conn.WriteJSON(map[string]interface{}{
-				"type": "error",
-				"data": "Not connected to Neovim",
-			})
-			continue
-		}
-
-		ctx.handleClientMessage(msg)
+		s.handleClientMessage(session, msg)
 	}
 }
 
-func (ctx *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) connectSessionToNeovim(session *ClientSession, address string) error {
+	// Close existing connection if any
+	if session.nvim != nil {
+		log.Printf("Closing existing Neovim connection for client")
+		session.nvim.Close()
+		session.nvim = nil
+	}
+
+	log.Printf("Dialing Neovim at address: %s", address)
+	client, err := nvim.Dial(address)
+	if err != nil {
+		return fmt.Errorf("failed to dial %s: %w", address, err)
+	}
+
+	session.nvim = client
+	session.address = address
+	session.active = true
+	log.Printf("Successfully connected client to Neovim at %s", address)
+
+	// Start event listener for this session
+	go func() {
+		if err := s.listenToNeovimEvents(session); err != nil {
+			log.Printf("Error in Neovim event listener for client: %v", err)
+		}
+	}()
+
+	return nil
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	activeClients := 0
+	for _, session := range s.clients {
+		if session.active {
+			activeClients++
+		}
+	}
+	totalClients := len(s.clients)
+	s.mu.RUnlock()
+
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"status": "connected", "clients": ` +
-		fmt.Sprintf("%d", len(ctx.clients)) + `}`))
+	w.Write([]byte(fmt.Sprintf(`{"status": "running", "total_clients": %d, "active_clients": %d}`, totalClients, activeClients)))
 }
