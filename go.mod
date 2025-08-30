@@ -1,4 +1,4 @@
-module github.com/Kraust/neovim-server
+module github.com/Kraust/nvim-server
 
 go 1.24.6
 

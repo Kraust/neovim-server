@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Kraust/neovim-server/server"
+	"github.com/Kraust/nvim-server/server"
 	"log"
 )
 
@@ -11,4 +11,3 @@ func main() {
 		log.Fatalf("%s", err)
 	}
 }
-
