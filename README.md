@@ -70,5 +70,5 @@ creating an optimal development workflow.
 
 - [Code Server](https://github.com/coder/code-server) - VSCode in the Browser
 - [Glowing Bear](https://github.com/glowing-bear/glowing-bear) - WeeChat in the Browser
-- [Neovide](https://github.com/neovide/neovide) - An amazing Neovim GUI that I've been using since 2019.
+- [Neovide](https://github.com/neovide/neovide) - An amazing Neovim GUI that I've been using since 2020.
 
