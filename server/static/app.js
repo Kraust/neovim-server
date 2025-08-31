@@ -33,7 +33,7 @@ globalThis.addEventListener("load", () => {
 // Terminal event handlers
 const terminal = document.getElementById("terminal");
 
-terminal.addEventListener("keyup", (event) => {
+terminal.addEventListener("keyup", (_event) => {
     if (!client.connected) return;
 });
 

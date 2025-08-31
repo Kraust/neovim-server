@@ -54,7 +54,7 @@ class NeovimRenderer {
             fontString.match(/^([^\d]+)\s+(\d+)$/);
 
         if (fontMatch) {
-            let fontFamily = fontMatch[1].trim();
+            const fontFamily = fontMatch[1].trim();
             const newFontSize = parseInt(fontMatch[2]) || 12;
 
             if (newFontSize !== this.fontSize) {
@@ -186,7 +186,7 @@ class NeovimRenderer {
             : this.getCursorShapeForMode(this.cursorMode);
 
         switch (cursorShape) {
-            case "block":
+            case "block": {
                 this.ctx.fillRect(x, y, this.cellWidth, this.cellHeight);
                 const cell = this.grid[this.cursor.row] &&
                     this.grid[this.cursor.row][this.cursor.col];
@@ -195,12 +195,12 @@ class NeovimRenderer {
                     this.ctx.fillText(cell.char, x, y + 2);
                 }
                 break;
-
-            case "vertical":
+            }
+            case "vertical": {
                 this.ctx.fillRect(x, y, 2, this.cellHeight);
                 break;
-
-            case "horizontal":
+            }
+            case "horizontal": {
                 const height = Math.max(2, Math.floor(this.cellHeight * 0.2));
                 this.ctx.fillRect(
                     x,
@@ -209,14 +209,15 @@ class NeovimRenderer {
                     height,
                 );
                 break;
-
-            default:
+            }
+            default: {
                 this.ctx.fillRect(
                     x,
                     y + this.cellHeight - 2,
                     this.cellWidth,
                     2,
                 );
+            }
         }
     }
 
@@ -346,7 +347,7 @@ class NeovimRenderer {
         for (const scrollData of eventData) {
             if (!Array.isArray(scrollData) || scrollData.length < 7) continue;
 
-            const [grid, top, bot, left, right, rows, cols] = scrollData;
+            const [grid, top, bot, left, right, rows, _cols] = scrollData;
 
             if (grid !== 1) continue;
 
@@ -399,7 +400,8 @@ class NeovimRenderer {
                 continue;
             }
 
-            const [grid, win, topline, botline, curline, curcol] = viewportData;
+            const [grid, _win, topline, botline, curline, curcol] =
+                viewportData;
 
             if (grid === 1) {
                 console.log(
@@ -435,7 +437,7 @@ class NeovimRenderer {
 
     handleHlAttrDefine(eventData) {
         for (const hlData of eventData) {
-            const [id, rgbAttrs, ctermAttrs, info] = hlData;
+            const [id, rgbAttrs, _ctermAttrs, _info] = hlData;
 
             const attrs = rgbAttrs || {};
 
@@ -474,7 +476,7 @@ class NeovimRenderer {
         for (const lineData of eventData) {
             if (!Array.isArray(lineData) || lineData.length < 4) continue;
 
-            const [grid, row, colStart, cells, wrap] = lineData;
+            const [grid, row, colStart, cells, _wrap] = lineData;
 
             if (grid !== 1 || row >= this.rows || row < 0) continue;
 

@@ -87,12 +87,13 @@ class NeovimClient {
 
     handleMessage(msg) {
         switch (msg.type) {
-            case "ready":
+            case "ready": {
                 this.updateStatus("Ready to connect to Neovim");
                 this.updateTitle();
                 this.updateFavicon("default");
                 break;
-            case "connected":
+            }
+            case "connected": {
                 this.connected = true;
                 this.updateStatus(
                     "Connected to Neovim successfully! Initializing UI...",
@@ -116,34 +117,41 @@ class NeovimClient {
 
                 document.getElementById("terminal").focus();
                 break;
-            case "session_closed":
+            }
+            case "session_closed": {
                 this.connected = false;
                 this.updateStatus("Neovim session closed - " + msg.data);
                 this.updateTitle();
                 this.updateFavicon("error");
                 this.showConnectionForm();
                 break;
-            case "error":
+            }
+            case "error": {
                 console.error("Error:", msg.data);
                 this.updateStatus("Error: " + msg.data);
                 this.updateTitle();
                 this.updateFavicon("error");
                 break;
-            case "redraw":
+            }
+            case "redraw": {
                 if (this.renderer && Array.isArray(msg.data)) {
                     this.renderer.handleRedrawEvent(msg.data);
                 }
                 break;
-            case "clipboard_set":
+            }
+            case "clipboard_set": {
                 if (this.clipboardEnabled && msg.data) {
                     this.syncToSystemClipboard(msg.data);
                 }
                 break;
-            case "clipboard_get":
+            }
+            case "clipboard_get": {
                 this.sendClipboardToNeovim();
                 break;
-            default:
+            }
+            default: {
                 console.log("Unknown message type:", msg.type);
+            }
         }
     }
 
@@ -375,7 +383,7 @@ class NeovimClient {
             terminal.addEventListener("keydown", (event) => {
                 if (!this.connected) return;
                 event.preventDefault();
-                let key = this.translateKey(event);
+                const key = this.translateKey(event);
                 if (key) {
                     this.sendInput(key);
                 }
@@ -686,7 +694,7 @@ class NeovimClient {
                 this.clipboardEnabled = true;
                 return true;
             }
-        } catch (err) {
+        } catch (_err) {
             this.clipboardEnabled = false;
         }
         return false;
