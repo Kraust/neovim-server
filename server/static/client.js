@@ -263,7 +263,11 @@ class NeovimClient {
             terminal.focus();
         });
 
-        // Enhance the focus handler to always sync clipboard
+        terminal.addEventListener("contextmenu", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        });
+
         terminal.addEventListener("focus", () => {
             if (this.connected && this.clipboardEnabled) {
                 this.sendClipboardToNeovim();
