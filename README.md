@@ -1,5 +1,7 @@
 # Neovim in the Browser
 
+<img width="1960" height="1120" alt="Screenshot from 2025-08-30 20-58-16" src="https://github.com/user-attachments/assets/a84ab3c0-176b-4b3d-a413-5586fde4c7e3" />
+
 `nvim-server` is a web frontend for [Neovim](https://neovim.io/) designed around
 allowing the user to run Neovim anywhere you have a browser.
 
