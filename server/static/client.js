@@ -58,31 +58,25 @@ class NeovimClient {
         let link = document.querySelector("link[rel*='icon']");
         if (!link) {
             link = document.createElement("link");
-            link.type = "image/x-icon";
+            link.type = "image/svg+xml";
             link.rel = "shortcut icon";
             document.head.appendChild(link);
         }
 
-        let svgContent;
         switch (status) {
-            case "connected":
-                svgContent =
-                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">✅</text></svg>';
+            case "error": {
+                link.href = "neovim-inactive.svg";
                 break;
-            case "connecting":
-                svgContent =
-                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔄</text></svg>';
+            }
+            case "connecting": {
+                link.href = "neovim-inactive.svg";
                 break;
-            case "error":
-                svgContent =
-                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">❌</text></svg>';
+            }
+            default: {
+                link.href = "neovim.svg";
                 break;
-            default:
-                svgContent =
-                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📝</text></svg>';
+            }
         }
-
-        link.href = "data:image/svg+xml," + encodeURIComponent(svgContent);
     }
 
     handleMessage(msg) {
