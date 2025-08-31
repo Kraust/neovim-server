@@ -1,42 +1,71 @@
-# nvim-server
+# Neovim in the Browser
 
-## Introduction
+`nvim-server` is a web frontend for [Neovim](https://neovim.io/) designed around
+allowing the user to run Neovim anywhere you have a browser.
 
-This is a Proof of Concept for a Neovim Server that I've mainly vibe coded.
-Once I have a working model I plan on doing a better implementation. This is
-loosely based on the concept presented by 
-[Code Server](https://github.com/coder/code-server).
-
-## Project Goals
-
-Since ~2019 I have wanted a remote ui for Neovim that can be rendered in
-the browser. While there are similar options (such as 
-[Firenvim](https://github.com/glacambre/firenvim)) none of them meet my
+Note this project was vibe coded over a two day period, and I'm at the point in
+which I believe I have a minimal viable product. Next steps include addressing
+roadmap items and trying to refactor / understand parts of the code I had the
+AI generate. Right now I'd consider nvim-server an MVP based on my personal
 requirements.
 
-- Go Based Backend
-- Simple frontend that allows for connecting to a remote neovim instance e.g.
-with `nvim --headless --listen 127.0.0.1:6666`
-- [Glowing Bear](https://glowing-bear.org/) like approach to remote clients.
+# Features
 
-## Why start off with Vibe Coding?
+- One server can connect to multiple clients.
+- Full clipboard integration using a custom clipboard provider.
+- GPU acceleration.
 
-- I am not a web developer (My background is in systems programming,
-driver development, and backend)
-- I wanted to see if I could leverage an AI to see how fast I could generate
-a working PoC for a project I have been sitting on for over half of a decade.
+# Usage
 
-## Why would you ever use this?
+First spawn the server:
 
-I wrote a couple of blog posts about neovim as a service, but never finished 
-the series:
+```
+$ ./nvim-server --address 0.0.0.0:9998
+```
+
+Then you can go to `http://localhost:9998` and enter the location of a remote
+neovim instance. You can optionally pass in the server address as a query
+string (e.g. `http://localhost:9998/?server=localhost:9000`) to automatically
+connect to your Neovim instance.
+
+Optionally, you can create a systemd unit to automate this entire process:
+
+```
+[Unit]
+Description=nvim-server
+
+[Service]
+ExecStart=nvim-server --address 0.0.0.0:9998
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+Note that if your nvim-server and nvim are on different LANs you may want to
+use a secure tunnel to encrypt your neovim RPC traffic.
+
+# Clipboard Support
+
+Clipboard Support requires the user to have nvim-server running behind HTTPS
+as browsers block clipboard sharing for HTTP connections.
+
+# Project Background
+
+Before starting this project I wrote a couple of blog posts about Neovim being
+a terminal emulator / multiplexer replacement. I may write future posts in the
+future elaborating on why Neovim in the browser was my eventual conclusion for
+creating an optimal development workflow.
+
 - [Remote Neovim for Dummies](https://kraust.github.io/posts/remote-neovim-for-dummies/)
 - [Neovim is a Multiplexer](https://kraust.github.io/posts/neovim-is-a-multiplexer/)
 
-## Is this secure?
+# Roadmap
 
-- The plan is to eventually be secure. Because the client runs over HTTP, traffic
- can be shipped over HTTPs to the backend, and you can bring your own security for 
- the backend connection from the server to your neovim client.
+- Better font rendering support.
 
+## Similar Projects
+
+- [Code Server](https://github.com/coder/code-server) - VSCode in the Browser
+- [Glowing Bear](https://github.com/glowing-bear/glowing-bear) - WeeChat in the Browser
 
