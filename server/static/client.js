@@ -595,16 +595,35 @@ class NeovimClient {
     }
 
     connectToNeovim(address) {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this.updateStatus("Reconnecting to server...");
+            this.connect();
+
+            const checkConnection = setInterval(() => {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    clearInterval(checkConnection);
+                    this.ws.send(
+                        JSON.stringify({
+                            type: "connect",
+                            address: address,
+                        }),
+                    );
+                }
+            }, 100);
+
+            setTimeout(() => {
+                clearInterval(checkConnection);
+                if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    this.updateStatus("Failed to reconnect to server");
+                }
+            }, 5000);
+        } else {
             this.ws.send(
                 JSON.stringify({
                     type: "connect",
                     address: address,
                 }),
             );
-        } else {
-            console.error("WebSocket not ready");
-            this.updateStatus("WebSocket not connected");
         }
     }
 
