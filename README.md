@@ -11,13 +11,13 @@ roadmap items and trying to refactor / understand parts of the code I had the
 AI generate. Right now I'd consider nvim-server an MVP based on my personal
 requirements.
 
-# Features
+## Features
 
 - One server can connect to multiple clients.
 - Full clipboard integration using a custom clipboard provider.
 - GPU acceleration.
 
-# Usage
+## Usage
 
 First spawn the server:
 
@@ -47,12 +47,12 @@ WantedBy=default.target
 Note that if your nvim-server and nvim are on different LANs you may want to
 use a secure tunnel to encrypt your neovim RPC traffic.
 
-# Clipboard Support
+## Clipboard Support
 
 Clipboard Support requires the user to have nvim-server running behind HTTPS
 as browsers block clipboard sharing for HTTP connections.
 
-# Project Background
+## Project Background
 
 Before starting this project I wrote a couple of blog posts about Neovim being
 a terminal emulator / multiplexer replacement. I may write future posts in the
@@ -62,7 +62,7 @@ creating an optimal development workflow.
 - [Remote Neovim for Dummies](https://kraust.github.io/posts/remote-neovim-for-dummies/)
 - [Neovim is a Multiplexer](https://kraust.github.io/posts/neovim-is-a-multiplexer/)
 
-# Roadmap
+## Roadmap
 
 - Better font rendering support.
 
