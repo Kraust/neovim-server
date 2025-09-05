@@ -394,6 +394,8 @@ class NeovimClient {
     translateKey(event) {
         const { key, code, ctrlKey, altKey, shiftKey, metaKey } = event;
 
+        // for <LT> See
+        // https://pkg.go.dev/github.com/neovim/go-client/nvim#Nvim.Input
         const specialKeys = {
             Enter: "<CR>",
             Escape: "<Esc>",
@@ -410,6 +412,7 @@ class NeovimClient {
             ArrowLeft: "<Left>",
             ArrowRight: "<Right>",
             " ": "<Space>",
+            "<": "<LT>",
         };
 
         for (let i = 1; i <= 12; i++) {
@@ -417,10 +420,22 @@ class NeovimClient {
         }
 
         let modifiers = "";
-        if (ctrlKey) modifiers += "C-";
-        if (altKey) modifiers += "A-";
-        if (metaKey) modifiers += "D-";
-        if (shiftKey && !this.isShiftableKey(key)) modifiers += "S-";
+
+        if (ctrlKey) {
+            modifiers += "C-";
+        }
+
+        if (altKey) {
+            modifiers += "A-";
+        }
+
+        if (metaKey) {
+            modifiers += "D-";
+        }
+
+        if (shiftKey && !this.isShiftableKey(key)) {
+            modifiers += "S-";
+        }
 
         if (specialKeys[key]) {
             if (modifiers) {
